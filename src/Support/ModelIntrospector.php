@@ -46,7 +46,7 @@ final class ModelIntrospector
             }
 
             $type = self::columnKind($column);
-            $cast = isset($casts[$name]) && is_string($casts[$name]) ? $casts[$name] : null;
+            $cast = is_string($casts[$name] ?? null) ? $casts[$name] : null;
             $enum = $cast !== null && enum_exists($cast) ? $cast : null;
             $suggested = CastPipeline::suggest($cast, $type);
 

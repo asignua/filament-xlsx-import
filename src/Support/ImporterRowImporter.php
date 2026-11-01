@@ -34,10 +34,10 @@ final class ImporterRowImporter implements RowImporter
     private array $columnMap = [];
 
     /**
-     * @param class-string<Importer>                                                                                                                                            $importerClass
+     * @param class-string<Importer>                                                                                                                                                $importerClass
      * @param list<array{header: string, target: string|null, casts: list<array{type: string, arg: string, arg2: string, map: array<string, string>}>, mode: string, many: string}> $mapping
-     * @param array<string, mixed>                                                                                                                                              $options
-     * @param array<string, mixed>                                                                                                                                              $spec
+     * @param array<string, mixed>                                                                                                                                                  $options
+     * @param array<string, mixed>                                                                                                                                                  $spec
      */
     public function __construct(
         private readonly string $importerClass,
@@ -124,7 +124,7 @@ final class ImporterRowImporter implements RowImporter
 
         try {
             DB::transaction(fn () => ($this->importer)($row));
-            $capture = self::$capture;
+            $capture = self::captured();
         } catch (RowImportFailedException $e) {
             return RowOutcome::failed($e->getMessage());
         } catch (ValidationException $e) {
@@ -152,6 +152,14 @@ final class ImporterRowImporter implements RowImporter
         }
 
         return new RowOutcome($capture['exists'] ? RowOutcome::UPDATED : RowOutcome::CREATED, '', $capture['exists'] ? $changes : [], '');
+    }
+
+    /**
+     * @return array{importer: Importer, exists: bool, dirty: array<string, array{0: mixed, 1: mixed}>, saved: bool, authorize: bool, user: ?Authenticatable}
+     */
+    private static function captured(): array
+    {
+        return self::$capture ?? throw new \LogicException('No row is being imported.');
     }
 
     public function finish(): void

@@ -16,8 +16,6 @@ class ProductResource extends Resource
 {
     protected static ?string $model = Product::class;
 
-    
-
     /** Replaces the header actions of the list page in a test. */
     public static ?Closure $header = null;
 

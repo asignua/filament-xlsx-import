@@ -33,8 +33,8 @@ final class ModelRowImporter implements RowImporter
 
     /**
      * @param list<array{header: string, target: string|null, casts: list<array{type: string, arg: string, arg2: string, map: array<string, string>}>, mode: string, many: string}> $mapping
-     * @param array<string, mixed>                                                                                                                                              $spec
-     * @param Closure(array<string, mixed>, ?Model, ImportContext): (Model|null)|null                                                                                           $saveUsing
+     * @param array<string, mixed>                                                                                                                                                  $spec
+     * @param Closure(array<string, mixed>, ?Model, ImportContext): (Model|null)|null                                                                                               $saveUsing
      */
     public function __construct(
         private readonly Definition $definition,
@@ -59,7 +59,7 @@ final class ModelRowImporter implements RowImporter
                 $value = $attributes[$key] ?? null;
 
                 if ($value === null || $value === '') {
-                    return RowOutcome::failed(__('filament-xlsx-import::filament-xlsx-import.row.key_empty', ['field' => $this->definition->target($key)?->label ?? $key]));
+                    return RowOutcome::failed(__('filament-xlsx-import::filament-xlsx-import.row.key_empty', ['field' => $this->definition->target($key)->label ?? $key]));
                 }
 
                 $existing = $this->definition->model::query()->where($key, $value)->first();
@@ -145,7 +145,7 @@ final class ModelRowImporter implements RowImporter
     }
 
     /**
-     * @param array<string, mixed>                                                                                    $attributes
+     * @param array<string, mixed>                                                                                $attributes
      * @param array<string, array{target: TargetField, fields: array<string, mixed>, mode: string, many: string}> $relations
      */
     private function validate(array $attributes, array $relations, bool $isNew): void
@@ -181,7 +181,7 @@ final class ModelRowImporter implements RowImporter
     }
 
     /**
-     * @param array<string, mixed>                                                                                    $attributes
+     * @param array<string, mixed>                                                                                $attributes
      * @param array<string, array{target: TargetField, fields: array<string, mixed>, mode: string, many: string}> $relations
      *
      * @return array<string, array{0: string|null, 1: string|null}>
@@ -193,11 +193,11 @@ final class ModelRowImporter implements RowImporter
         foreach ($attributes as $name => $new) {
             $old = $existing->getAttribute($name);
             $target = $this->definition->target($name);
-            $oldText = self::display($old, $target?->type ?? 'string');
-            $newText = self::display($new, $target?->type ?? 'string');
+            $oldText = self::display($old, $target->type ?? 'string');
+            $newText = self::display($new, $target->type ?? 'string');
 
             if (!self::same($oldText, $newText)) {
-                $changes[$target?->label ?? $name] = [$oldText, $newText];
+                $changes[$target->label ?? $name] = [$oldText, $newText];
             }
         }
 
@@ -231,7 +231,7 @@ final class ModelRowImporter implements RowImporter
     }
 
     /**
-     * @param array<string, mixed>                                                                                    $attributes
+     * @param array<string, mixed>                                                                                $attributes
      * @param array<string, array{target: TargetField, fields: array<string, mixed>, mode: string, many: string}> $relations
      *
      * @return array<string, array{0: string|null, 1: string|null}>
@@ -242,7 +242,7 @@ final class ModelRowImporter implements RowImporter
 
         foreach ($attributes as $name => $value) {
             $target = $this->definition->target($name);
-            $values[$target?->label ?? $name] = [null, self::display($value, $target?->type ?? 'string')];
+            $values[$target->label ?? $name] = [null, self::display($value, $target->type ?? 'string')];
         }
 
         foreach ($relations as $info) {
@@ -255,7 +255,7 @@ final class ModelRowImporter implements RowImporter
     }
 
     /**
-     * @param array<string, mixed>                                                                                    $attributes
+     * @param array<string, mixed>                                                                                $attributes
      * @param array<string, array{target: TargetField, fields: array<string, mixed>, mode: string, many: string}> $relations
      */
     private function write(?Model $existing, array $attributes, array $relations, int $number): void
@@ -282,7 +282,7 @@ final class ModelRowImporter implements RowImporter
             $related = $this->resolve($info);
             $relation = $model->{$name}();
 
-            if ($relation instanceof BelongsTo && $related !== null) {
+            if ($relation instanceof BelongsTo) {
                 $relation->associate($related);
             }
         }
@@ -303,9 +303,7 @@ final class ModelRowImporter implements RowImporter
                 foreach ((array) $info['fields'][$field] as $value) {
                     $record = $this->resolve(['target' => $info['target'], 'fields' => [$field => $value], 'mode' => $info['mode'], 'many' => $info['many']]);
 
-                    if ($record !== null) {
-                        $ids[] = $record->getKey();
-                    }
+                    $ids[] = $record->getKey();
                 }
 
                 $info['many'] === 'replace' ? $relation->sync($ids) : $relation->syncWithoutDetaching($ids);
@@ -316,7 +314,7 @@ final class ModelRowImporter implements RowImporter
     /**
      * @param array{target: TargetField, fields: array<string, mixed>, mode: string, many: string} $info
      */
-    private function resolve(array $info): ?Model
+    private function resolve(array $info): Model
     {
         $class = $info['target']->relatedModel;
         $found = $class::query()->where($info['fields'])->first();
@@ -331,6 +329,7 @@ final class ModelRowImporter implements RowImporter
             throw new RowFailed(__('filament-xlsx-import::filament-xlsx-import.row.related_missing', ['relation' => $info['target']->label, 'value' => $pairs]));
         }
 
+        /** @var Model $record */
         $record = new $class;
         $record->forceFill($info['fields'])->save();
 

@@ -18,9 +18,9 @@ use Throwable;
 final class ImportRunner
 {
     /**
-     * @param array<string, mixed>                                                      $spec
+     * @param array<string, mixed>                                                                           $spec
      * @param Closure(array<string, mixed>, ?\Illuminate\Database\Eloquent\Model, ImportContext): mixed|null $saveUsing
-     * @param Closure(int, int): void|null                                              $progress
+     * @param Closure(int, int): void|null                                                                   $progress
      *
      * @return array<string, mixed>
      */
@@ -28,18 +28,21 @@ final class ImportRunner
     {
         $id = (string) $spec['run_id'];
         $meta = RunStore::meta($id);
-        $definition = DefinitionResolver::resolve(
-            is_string($spec['model'] ?? null) ? $spec['model'] : null,
-            is_string($spec['importer'] ?? null) ? $spec['importer'] : null,
-            is_string($spec['definition'] ?? null) ? $spec['definition'] : null,
-            (array) ($spec['overrides'] ?? []),
-        );
+        /** @var class-string<\Illuminate\Database\Eloquent\Model>|null $model */
+        $model = is_string($spec['model'] ?? null) ? $spec['model'] : null;
+        /** @var class-string<\Filament\Actions\Imports\Importer>|null $importer */
+        $importer = is_string($spec['importer'] ?? null) ? $spec['importer'] : null;
+        /** @var class-string|null $definitionClass */
+        $definitionClass = is_string($spec['definition'] ?? null) ? $spec['definition'] : null;
+        $definition = DefinitionResolver::resolve($model, $importer, $definitionClass, (array) ($spec['overrides'] ?? []));
 
         /** @var list<array{header: string, target: string|null, casts: list<array{type: string, arg: string, arg2: string, map: array<string, string>}>, mode: string, many: string}> $mapping */
         $mapping = $spec['mapping'];
+        /** @var class-string<\Filament\Actions\Imports\Importer> $importerClass */
+        $importerClass = (string) $definition->importer;
         $user = Auth::user();
         $engine = $definition->importer !== null
-            ? new ImporterRowImporter($definition->importer, $mapping, (array) ($spec['options'] ?? []), $spec, $user, (string) ($meta['file_name'] ?? 'import'))
+            ? new ImporterRowImporter($importerClass, $mapping, (array) ($spec['options'] ?? []), $spec, $user, (string) ($meta['file_name'] ?? 'import'))
             : new ModelRowImporter($definition, $mapping, $spec, $user, $dry, $saveUsing);
 
         $headers = array_values(array_map('strval', (array) ($meta['headers'] ?? [])));

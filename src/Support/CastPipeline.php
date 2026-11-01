@@ -162,12 +162,12 @@ final class CastPipeline
                 $carbon = Carbon::createFromFormat($format, $text);
                 $errors = Carbon::getLastErrors();
 
-                if ($carbon === false || (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
+                if (!$carbon instanceof Carbon || (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
                     throw new CastException('format');
                 }
             } else {
                 $carbon = is_numeric($text) && (float) $text > 20_000 && (float) $text < 80_000
-                    ? Carbon::create(1899, 12, 30)->addDays((int) $text)
+                    ? Carbon::parse('1899-12-30')->addDays((int) $text)
                     : Carbon::parse($text);
             }
         } catch (Throwable) {
@@ -218,8 +218,10 @@ final class CastPipeline
 
         $needle = mb_strtolower(trim($text));
 
-        /** @var class-string<UnitEnum> $class */
-        foreach ($class::cases() as $case) {
+        /** @var list<UnitEnum> $cases */
+        $cases = $class::cases();
+
+        foreach ($cases as $case) {
             $labels = [mb_strtolower($case->name)];
 
             if ($case instanceof BackedEnum) {

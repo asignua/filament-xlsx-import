@@ -62,7 +62,7 @@ trait DrivesImport
     protected function remap(Testable $page, array $changes): Testable
     {
         foreach ($this->mapping($page) as $i => $entry) {
-            if (! isset($changes[$entry['header']])) {
+            if (!isset($changes[$entry['header']])) {
                 continue;
             }
 

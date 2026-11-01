@@ -125,7 +125,7 @@ final class DefinitionResolver
                 rules: $rules['rules'],
                 required: $column->isMappingRequired(),
                 mappingRequired: $column->isMappingRequired(),
-                aliases: array_map('strval', $column->getGuesses()),
+                aliases: array_values(array_map('strval', $column->getGuesses())),
                 options: $rules['options'],
                 type: $column->isBoolean() ? 'boolean' : ($column->isNumeric() ? 'decimal' : 'string'),
                 example: self::example($column),
@@ -160,9 +160,9 @@ final class DefinitionResolver
 
         foreach ($raw as $rule) {
             if (is_string($rule) && str_starts_with($rule, 'in:')) {
-                $options = array_map(static fn (string $v): string => trim($v, '"'), str_getcsv(substr($rule, 3), ',', '"', ''));
+                $options = array_map(static fn (?string $v): string => trim((string) $v, '"'), str_getcsv(substr($rule, 3), ',', '"', ''));
             } elseif ($rule instanceof In) {
-                $options = array_map(static fn (string $v): string => trim($v, '"'), str_getcsv(substr((string) $rule, 3), ',', '"', ''));
+                $options = array_map(static fn (?string $v): string => trim((string) $v, '"'), str_getcsv(substr((string) $rule, 3), ',', '"', ''));
             } elseif ($rule instanceof Enum) {
                 $type = (new ReflectionClass($rule))->getProperty('type')->getValue($rule);
                 $options = is_string($type) && enum_exists($type) ? array_map(

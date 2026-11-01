@@ -20,6 +20,15 @@ return new class extends Migration
             $table->timestamps();
         });
 
+        Schema::create('notifications', function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->string('type');
+            $table->morphs('notifiable');
+            $table->text('data');
+            $table->timestamp('read_at')->nullable();
+            $table->timestamps();
+        });
+
         Schema::create('categories', function (Blueprint $table): void {
             $table->id();
             $table->string('name');

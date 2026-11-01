@@ -6,8 +6,6 @@ namespace Workbench\App\Providers;
 
 use Asignua\FilamentXlsxImport\XlsxImportPlugin;
 use Filament\Http\Middleware\Authenticate;
-use Workbench\App\Filament\Resources\Contacts\ContactResource;
-use Workbench\App\Filament\Resources\Products\ProductResource;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Panel;
@@ -19,6 +17,8 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use Workbench\App\Filament\Resources\Contacts\ContactResource;
+use Workbench\App\Filament\Resources\Products\ProductResource;
 
 class AdminPanelProvider extends PanelProvider
 {

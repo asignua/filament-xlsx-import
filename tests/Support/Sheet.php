@@ -16,7 +16,7 @@ use ZipArchive;
 final class Sheet
 {
     /**
-     * @param list<list<mixed>>         $rows
+     * @param list<list<mixed>>                $rows
      * @param array<string, list<list<mixed>>> $more extra sheets by name
      */
     public static function xlsx(array $rows, string $name = 'data.xlsx', array $more = []): UploadedFile

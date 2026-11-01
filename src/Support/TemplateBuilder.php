@@ -139,7 +139,7 @@ final class TemplateBuilder
             return;
         }
 
-        $sheetName = str_replace("'", "''", __('filament-xlsx-import::filament-xlsx-import.template.lists'));
+        $sheetName = str_replace("'", "''", (string) __('filament-xlsx-import::filament-xlsx-import.template.lists'));
         $rules = '';
         $n = 0;
 

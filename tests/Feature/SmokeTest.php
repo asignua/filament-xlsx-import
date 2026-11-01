@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Asignua\FilamentXlsxImport\Tests\Feature;
 
-use Asignua\FilamentXlsxImport\XlsxImportPlugin;
 use Asignua\FilamentXlsxImport\Tests\TestCase;
+use Asignua\FilamentXlsxImport\XlsxImportPlugin;
 use Filament\Facades\Filament;
 
 class SmokeTest extends TestCase

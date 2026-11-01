@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Asignua\FilamentXlsxImport\Actions;
 
 use Asignua\FilamentXlsxImport\Data\Definition;
-use Asignua\FilamentXlsxImport\Data\TargetField;
 use Asignua\FilamentXlsxImport\Support\CastPipeline;
 use Asignua\FilamentXlsxImport\Support\CsvNormalizer;
 use Asignua\FilamentXlsxImport\Support\DefinitionResolver;
@@ -205,7 +204,7 @@ class XlsxImportAction extends Action
      * Take over the write: `fn (array $data, ?Model $existing, ImportContext $ctx)`. Needed for apps that
      * go through a repository. To run queued, give a class-string of an invokable class (a closure cannot be queued).
      *
-     * @param Closure|class-string $callback
+     * @param class-string|Closure $callback
      */
     public function saveUsing(string|Closure $callback): static
     {
@@ -324,6 +323,7 @@ class XlsxImportAction extends Action
 
         if ($this->dryRunOn()) {
             $steps[] = Step::make($t('step_preview'))->schema([
+                // @phpstan-ignore argument.type
                 View::make('filament-xlsx-import::preview')->viewData(fn (Get $get): array => [
                     'preview' => $get('run_id') ? (RunStore::meta((string) $get('run_id'))['preview'] ?? null) : null,
                     'rows' => $get('run_id') ? (int) (RunStore::meta((string) $get('run_id'))['rows'] ?? 0) : 0,
@@ -479,6 +479,9 @@ class XlsxImportAction extends Action
         return $file !== null && SourceFile::extensionOf($file->getClientOriginalName()) === 'csv';
     }
 
+    /**
+     * @param array<string, mixed> $replace
+     */
     private function stop(string $messageKey, array $replace = []): never
     {
         Notification::make()->danger()->title(__('filament-xlsx-import::filament-xlsx-import.'.$messageKey, $replace))->send();
@@ -621,6 +624,7 @@ class XlsxImportAction extends Action
                     Hidden::make('origin'),
                     Hidden::make('samples'),
                     Hidden::make('distinct'),
+                    // @phpstan-ignore argument.type
                     View::make('filament-xlsx-import::mapping-source')->viewData(fn (Get $get): array => [
                         'header' => (string) $get('header'),
                         'samples' => (array) $get('samples'),
@@ -640,9 +644,9 @@ class XlsxImportAction extends Action
                             ->live()
                             ->afterStateUpdated(function (mixed $state, Get $get, Set $set) use ($definition): void {
                                 $target = is_string($state) ? $definition->target($state) : null;
-                                $set('casts', $target !== null ? Mapping::defaults($target, array_map('strval', (array) $get('distinct')))['casts'] : []);
-                                $set('mode', $target?->mode ?? 'lookup');
-                                $set('many', $target?->many ?? 'add');
+                                $set('casts', $target !== null ? Mapping::defaults($target, array_values(array_map('strval', (array) $get('distinct'))))['casts'] : []);
+                                $set('mode', $target->mode ?? 'lookup');
+                                $set('many', $target->many ?? 'add');
                             }),
                         Select::make('mode')
                             ->label($t('relation_mode'))
@@ -769,7 +773,7 @@ class XlsxImportAction extends Action
 
         if (count($mapped) !== count(array_unique($mapped))) {
             $duplicates = array_keys(array_filter(array_count_values($mapped), static fn (int $n): bool => $n > 1));
-            $this->stop('duplicate_target', ['field' => implode(', ', array_map(fn (string $k): string => $definition->target($k)?->label ?? $k, $duplicates))]);
+            $this->stop('duplicate_target', ['field' => implode(', ', array_map(fn (string $k): string => $definition->target($k)->label ?? $k, $duplicates))]);
         }
 
         $missing = [];
@@ -787,13 +791,12 @@ class XlsxImportAction extends Action
         $updateBy = $definition->importer === null && filled($data['update_by'] ?? null) ? (string) $data['update_by'] : null;
 
         if ($updateBy !== null && !in_array($updateBy, $mapped, true)) {
-            $this->stop('key_unmapped', ['field' => $definition->target($updateBy)?->label ?? $updateBy]);
+            $this->stop('key_unmapped', ['field' => $definition->target($updateBy)->label ?? $updateBy]);
         }
 
         if ($mapped === []) {
             $this->stop('nothing_mapped');
         }
-
     }
 
     private function checkImportMapping(Get $get, Set $set, Definition $definition): void

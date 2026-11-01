@@ -92,7 +92,7 @@ final class SourceFile
                         continue;
                     }
 
-                    yield $number => array_values($cells);
+                    yield $number => array_values($cells); // @phpstan-ignore arrayValues.list
                 }
 
                 return;
@@ -220,6 +220,9 @@ final class SourceFile
         return ['headers' => $headers, 'rows' => $count, 'samples' => $samples, 'distinct' => $distinct];
     }
 
+    /**
+     * @phpstan-ignore missingType.generics
+     */
     private function reader(): ReaderInterface
     {
         $reader = match ($this->extension) {

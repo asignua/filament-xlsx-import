@@ -22,10 +22,10 @@ final class Mapping
     }
 
     /**
-     * @param list<string>                                                                    $headers
-     * @param array<string, list<string>>                                                     $samples
-     * @param array<string, list<string>>                                                     $distinct
-     * @param list<array<string, mixed>>|null                                                 $preset  saved entries, matched by header
+     * @param list<string>                    $headers
+     * @param array<string, list<string>>     $samples
+     * @param array<string, list<string>>     $distinct
+     * @param list<array<string, mixed>>|null $preset   saved entries, matched by header
      *
      * @return list<array<string, mixed>>
      */
@@ -93,7 +93,7 @@ final class Mapping
      *
      * @param list<string> $distinct
      *
-     * @return array{target: string, casts: list<array{type: string, arg: string, arg2: string, map: array<string, string>}>, mode: string, many: string}
+     * @return array{target: string, casts: list<array<string, mixed>>, mode: string, many: string}
      */
     public static function defaults(TargetField $target, array $distinct = []): array
     {
@@ -127,7 +127,7 @@ final class Mapping
 
     /**
      * @param list<array{type: string, arg: string, arg2: string, map: array<string, string>}> $casts
-     * @param list<string>                                                                    $distinct
+     * @param list<string>                                                                     $distinct
      *
      * @return list<array{type: string, arg: string, arg2: string, map: array<string, string>}>
      */
