@@ -1,7 +1,7 @@
 {
     "name": "asignua/filament-xlsx-import",
-    "description": "TODO: one-sentence description of XLSX Import for Filament.",
-    "keywords": ["filament", "filament-plugin", "laravel"],
+    "description": "Import .xlsx, .ods and .csv into any model from a Filament 5 panel: the file's columns are mapped to attributes and related records with casts and presets, a dry run shows what will be created, updated or fail before anything is written, big files run in the queue, failed rows come back as an .xlsx report. Works with or without a Filament Importer class.",
+    "keywords": ["filament", "filament-plugin", "laravel", "xlsx", "excel", "import", "csv", "ods", "openspout", "dry-run"],
     "homepage": "https://github.com/asignua/filament-xlsx-import",
     "support": {
         "issues": "https://github.com/asignua/filament-xlsx-import/issues",
@@ -37,7 +37,8 @@
         "psr-4": {
             "Asignua\\FilamentXlsxImport\\Tests\\": "tests/",
             "Workbench\\App\\": "workbench/app/",
-            "Workbench\\Database\\Factories\\": "workbench/database/factories/"
+            "Workbench\\Database\\Factories\\": "workbench/database/factories/",
+            "Workbench\\Database\\Seeders\\": "workbench/database/seeders/"
         }
     },
     "extra": {

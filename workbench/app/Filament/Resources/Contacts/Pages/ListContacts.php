@@ -7,6 +7,7 @@ namespace Workbench\App\Filament\Resources\Contacts\Pages;
 use Asignua\FilamentXlsxImport\Actions\XlsxImportAction;
 use Filament\Resources\Pages\ListRecords;
 use Workbench\App\Filament\Resources\Contacts\ContactResource;
+use Workbench\App\Import\ContactImporter;
 
 class ListContacts extends ListRecords
 {
@@ -18,6 +19,6 @@ class ListContacts extends ListRecords
             return (ContactResource::$header)();
         }
 
-        return [XlsxImportAction::make()->model(\Workbench\App\Models\Contact::class)];
+        return [XlsxImportAction::make()->importer(ContactImporter::class)];
     }
 }

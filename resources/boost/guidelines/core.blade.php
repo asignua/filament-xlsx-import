@@ -1,4 +1,9 @@
 ## Filament XLSX Import (asignua/filament-xlsx-import)
 
-- Register the plugin on the panel: `->plugin(Asignua\FilamentXlsxImport\XlsxImportPlugin::make())`.
-- TODO: describe the public API, the one-line recipe and the traps a coding agent must know.
+- Add `XlsxImportAction::make()` to a list page's `getHeaderActions()` (or a table's `headerActions()`); with no arguments it imports into the page's model. `->model(X::class)` / `->importer(XImporter::class)` pick another target. Works with models whose mass assignment is off: attributes are assigned with `forceFill()`.
+- Predefine an import by implementing `Asignua\FilamentXlsxImport\Contracts\DefinesImport` on the model (`importRules(): ['update_by' => 'sku', 'fields' => ['price' => ['aliases' => [], 'casts' => ['trim', 'decimal:,'], 'rules' => [], 'required' => false]]]`). Relation targets are `relation.field` (`category.name`, `tags.name`); keys, casts and modes pre-fill the mapping screen and the user may override them for one run.
+- Upsert is explicit: `->updateBy('email')`, `->createOnly()`, `->updateOnly()`. Without a key every row creates. Blank cells never wipe a field.
+- Big files: `->queueWhenMoreThan(500)` / `->queue()`; the panel needs `->databaseNotifications()`. A `->saveUsing(Closure)` cannot be queued (use an invokable class name).
+- The dry run executes real writes in a rolled-back transaction: side effects outside the database (mail, files, an Importer's `afterSave` hooks) are not rolled back.
+- Presets need the published migration (`php artisan vendor:publish --tag=filament-xlsx-import-migrations`).
+- Run `php artisan xlsx-import:prune` (scheduled daily) to delete old uploads and failed-row reports.

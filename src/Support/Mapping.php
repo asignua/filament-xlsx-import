@@ -197,6 +197,28 @@ final class Mapping
             }
         }
 
+        // «Назва товару» for an alias «назва»: a header that starts with a known alias or name (4+ letters).
+        foreach ($headers as $index => $header) {
+            $needle = self::normalize($header);
+
+            if (isset($result[$index]) || $needle === '') {
+                continue;
+            }
+
+            foreach ([0, 1, 2] as $tier) {
+                foreach ($tiers[$tier] as $key => $names) {
+                    foreach ($names as $name) {
+                        if (!isset($taken[$key]) && mb_strlen($name) >= 4 && str_starts_with($needle, $name)) {
+                            $result[$index] = $key;
+                            $taken[$key] = true;
+
+                            continue 3;
+                        }
+                    }
+                }
+            }
+        }
+
         // Last resort: a near miss («Emial», «Custmer name»).
         foreach ($headers as $index => $header) {
             $needle = self::normalize($header);

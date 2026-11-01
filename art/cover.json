@@ -1,0 +1,17 @@
+{
+    "shots": [],
+    "covers": [
+        {
+            "html": "../../scripts/art/cover.html",
+            "out": "cover.jpg",
+            "query": {
+                "eyebrow": "Plugin for Filament 5",
+                "title": "XLSX Import",
+                "lead": "Import .xlsx, .ods and .csv into any model — map the columns, cast the values, preview every change before a row is written. Big files run in the queue.",
+                "chips": "Dry run|Column mapping|Related records|Saved presets|Queue",
+                "shot": "../../filament-xlsx-import/art/preview.jpg",
+                "crop": "70,110,1300,1480"
+            }
+        }
+    ]
+}

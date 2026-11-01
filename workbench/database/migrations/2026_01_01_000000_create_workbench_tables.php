@@ -10,6 +10,8 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // `testbench workbench:build` brings its own users/jobs tables; the demo wants `is_active`.
+        Schema::dropIfExists('users');
         Schema::create('users', function (Blueprint $table): void {
             $table->id();
             $table->string('name');
@@ -18,6 +20,17 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
             $table->rememberToken();
             $table->timestamps();
+        });
+
+        Schema::dropIfExists('jobs');
+        Schema::create('jobs', function (Blueprint $table): void {
+            $table->id();
+            $table->string('queue')->index();
+            $table->longText('payload');
+            $table->unsignedTinyInteger('attempts');
+            $table->unsignedInteger('reserved_at')->nullable();
+            $table->unsignedInteger('available_at');
+            $table->unsignedInteger('created_at');
         });
 
         Schema::create('notifications', function (Blueprint $table): void {
@@ -70,5 +83,8 @@ return new class extends Migration
             $table->string('city')->nullable();
             $table->timestamps();
         });
+
+        // The plugin's own (publishable) migration, as an app would run it after vendor:publish.
+        (require __DIR__.'/../../../database/migrations/create_xlsx_import_presets_table.php.stub')->up();
     }
 };

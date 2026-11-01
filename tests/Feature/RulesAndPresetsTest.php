@@ -24,6 +24,8 @@ class RulesAndPresetsTest extends TestCase
         parent::setUp();
 
         Storage::fake('local');
+        // The zero-config case: a model and nothing else (the workbench's own page uses an Importer class).
+        \Workbench\App\Filament\Resources\Contacts\ContactResource::$header = fn (): array => [XlsxImportAction::make()->model(Contact::class)];
     }
 
     protected function tearDown(): void

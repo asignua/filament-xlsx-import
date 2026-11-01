@@ -323,7 +323,6 @@ class XlsxImportAction extends Action
 
         if ($this->dryRunOn()) {
             $steps[] = Step::make($t('step_preview'))->schema([
-                // @phpstan-ignore argument.type
                 View::make('filament-xlsx-import::preview')->viewData(fn (Get $get): array => [
                     'preview' => $get('run_id') ? (RunStore::meta((string) $get('run_id'))['preview'] ?? null) : null,
                     'rows' => $get('run_id') ? (int) (RunStore::meta((string) $get('run_id'))['rows'] ?? 0) : 0,
@@ -624,98 +623,106 @@ class XlsxImportAction extends Action
                     Hidden::make('origin'),
                     Hidden::make('samples'),
                     Hidden::make('distinct'),
-                    // @phpstan-ignore argument.type
-                    View::make('filament-xlsx-import::mapping-source')->viewData(fn (Get $get): array => [
-                        'header' => (string) $get('header'),
-                        'samples' => (array) $get('samples'),
-                        'origin' => (string) $get('origin'),
-                        'rule' => $get('rule'),
-                        'modified' => $this->isModified([
-                            'target' => $get('target'), 'casts' => (array) $get('casts'), 'mode' => $get('mode'), 'many' => $get('many'), 'rule' => $get('rule'),
-                        ]),
-                    ]),
-                    Grid::make(['default' => 1, 'md' => 3])->schema([
-                        Select::make('target')
-                            ->label($t('import_into'))
-                            ->options($definition->options())
-                            ->placeholder($t('skip_column'))
-                            ->searchable()
-                            ->native(false)
-                            ->live()
-                            ->afterStateUpdated(function (mixed $state, Get $get, Set $set) use ($definition): void {
-                                $target = is_string($state) ? $definition->target($state) : null;
-                                $set('casts', $target !== null ? Mapping::defaults($target, array_values(array_map('strval', (array) $get('distinct'))))['casts'] : []);
-                                $set('mode', $target->mode ?? 'lookup');
-                                $set('many', $target->many ?? 'add');
-                            }),
-                        Select::make('mode')
-                            ->label($t('relation_mode'))
-                            ->options(['lookup' => $t('mode_lookup'), 'create' => $t('mode_create')])
-                            ->default('lookup')
-                            ->native(false)
-                            ->live()
-                            ->visible(fn (Get $get): bool => $definition->target((string) $get('target'))?->isRelation() ?? false),
-                        Select::make('many')
-                            ->label($t('many_mode'))
-                            ->options(['add' => $t('many_add'), 'replace' => $t('many_replace')])
-                            ->default('add')
-                            ->native(false)
-                            ->live()
-                            ->visible(fn (Get $get): bool => $definition->target((string) $get('target'))?->isMany() ?? false),
-                    ]),
-                    Repeater::make('casts')
-                        ->label($t('casts'))
-                        ->addActionLabel($t('add_cast'))
-                        ->default([])
-                        ->live()
-                        ->visible(fn (Get $get): bool => filled($get('target')))
-                        ->schema([
-                            Grid::make(['default' => 1, 'md' => 4])->schema([
-                                Select::make('type')->label($t('cast_label'))->options($castTypes)->native(false)->required()->live(),
-                                TextInput::make('arg')
-                                    ->label(fn (Get $get): string => $t('cast_arg.'.($get('type') ?: 'none')))
-                                    ->placeholder(fn (Get $get): string => $t('cast_hint.'.($get('type') ?: 'none')))
-                                    ->live(onBlur: true)
-                                    ->visible(fn (Get $get): bool => in_array($get('type'), ['decimal', 'date', 'datetime', 'enum', 'split', 'default', 'regex', 'boolean'], true)),
-                                TextInput::make('arg2')
-                                    ->label(fn (Get $get): string => $t('cast_arg2.'.($get('type') ?: 'none')))
-                                    ->live(onBlur: true)
-                                    ->visible(fn (Get $get): bool => in_array($get('type'), ['regex', 'boolean'], true)),
+                    Grid::make(['default' => 1, 'lg' => 2])->schema([
+                        Group::make([
+                            View::make('filament-xlsx-import::mapping-source')->viewData(fn (Get $get): array => [
+                                'header' => (string) $get('header'),
+                                'samples' => (array) $get('samples'),
+                                'origin' => (string) $get('origin'),
+                                'rule' => $get('rule'),
+                                'modified' => $this->isModified([
+                                    'target' => $get('target'), 'casts' => (array) $get('casts'), 'mode' => $get('mode'), 'many' => $get('many'), 'rule' => $get('rule'),
+                                ]),
                             ]),
-                            Repeater::make('map')
-                                ->label($t('value_table'))
-                                ->helperText($t('value_table_help'))
-                                ->addable(false)
-                                ->deletable(false)
+                            Grid::make(1)->schema([
+                                Select::make('target')
+                                    ->label($t('import_into'))
+                                    ->options($definition->options())
+                                    ->placeholder($t('skip_column'))
+                                    ->searchable()
+                                    ->native(false)
+                                    ->live()
+                                    ->afterStateUpdated(function (mixed $state, Get $get, Set $set) use ($definition): void {
+                                        $target = is_string($state) ? $definition->target($state) : null;
+                                        $set('casts', $target !== null ? Mapping::defaults($target, array_values(array_map('strval', (array) $get('distinct'))))['casts'] : []);
+                                        $set('mode', $target->mode ?? 'lookup');
+                                        $set('many', $target->many ?? 'add');
+                                    }),
+                                Select::make('mode')
+                                    ->label($t('relation_mode'))
+                                    ->options(['lookup' => $t('mode_lookup'), 'create' => $t('mode_create')])
+                                    ->default('lookup')
+                                    ->native(false)
+                                    ->live()
+                                    ->visible(fn (Get $get): bool => $definition->target((string) $get('target'))?->isRelation() ?? false),
+                                Select::make('many')
+                                    ->label($t('many_mode'))
+                                    ->options(['add' => $t('many_add'), 'replace' => $t('many_replace')])
+                                    ->default('add')
+                                    ->native(false)
+                                    ->live()
+                                    ->visible(fn (Get $get): bool => $definition->target((string) $get('target'))?->isMany() ?? false),
+                            ]),
+                            Actions::make([
+                                Action::make('resetRule')
+                                    ->label($t('reset_rule'))
+                                    ->icon(Heroicon::OutlinedArrowUturnLeft)
+                                    ->link()
+                                    ->visible(fn (Get $get): bool => $this->isModified([
+                                        'target' => $get('target'), 'casts' => (array) $get('casts'), 'mode' => $get('mode'), 'many' => $get('many'), 'rule' => $get('rule'),
+                                    ]))
+                                    ->action(function (Get $get, Set $set): void {
+                                        $rule = (array) $get('rule');
+                                        $set('target', $rule['target'] ?? null);
+                                        $set('casts', $rule['casts'] ?? []);
+                                        $set('mode', $rule['mode'] ?? 'lookup');
+                                        $set('many', $rule['many'] ?? 'add');
+                                    }),
+                            ]),
+                        ]),
+                        Group::make([
+                            Repeater::make('casts')
+                                ->label($t('casts'))
+                                ->addActionLabel($t('add_cast'))
                                 ->reorderable(false)
                                 ->compact()
+                                ->extraAttributes(['class' => 'xi-casts'])
                                 ->default([])
+                                ->live()
+                                ->visible(fn (Get $get): bool => filled($get('target')))
                                 ->schema([
-                                    Grid::make(['default' => 2])->schema([
-                                        TextInput::make('from')->label($t('value_in_file'))->readOnly(),
-                                        TextInput::make('to')->label($t('value_imported'))->live(onBlur: true),
+                                    Grid::make(2)->schema([
+                                        Select::make('type')->label($t('cast_label'))->options($castTypes)->native(false)->required()->live(),
+                                        TextInput::make('arg')
+                                            ->label(fn (Get $get): string => $t('cast_arg.'.($get('type') ?: 'none')))
+                                            ->placeholder(fn (Get $get): string => $t('cast_hint.'.($get('type') ?: 'none')))
+                                            ->live(onBlur: true)
+                                            ->visible(fn (Get $get): bool => in_array($get('type'), ['decimal', 'date', 'datetime', 'enum', 'split', 'default', 'regex', 'boolean'], true)),
+                                        TextInput::make('arg2')
+                                            ->columnSpanFull()
+                                            ->label(fn (Get $get): string => $t('cast_arg2.'.($get('type') ?: 'none')))
+                                            ->live(onBlur: true)
+                                            ->visible(fn (Get $get): bool => in_array($get('type'), ['regex', 'boolean'], true)),
                                     ]),
-                                ])
-                                ->visible(fn (Get $get): bool => $get('type') === 'enum' && (array) $get('map') !== []),
+                                    Repeater::make('map')
+                                        ->label($t('value_table'))
+                                        ->helperText($t('value_table_help'))
+                                        ->addable(false)
+                                        ->deletable(false)
+                                        ->reorderable(false)
+                                        ->compact()
+                                        ->default([])
+                                        ->schema([
+                                            Grid::make(['default' => 2])->schema([
+                                                TextInput::make('from')->label($t('value_in_file'))->readOnly(),
+                                                TextInput::make('to')->label($t('value_imported'))->live(onBlur: true),
+                                            ]),
+                                        ])
+                                        ->visible(fn (Get $get): bool => $get('type') === 'enum' && (array) $get('map') !== []),
+                                ]),
                         ]),
-                    Actions::make([
-                        Action::make('resetRule')
-                            ->label($t('reset_rule'))
-                            ->icon(Heroicon::OutlinedArrowUturnLeft)
-                            ->link()
-                            ->visible(fn (Get $get): bool => $this->isModified([
-                                'target' => $get('target'), 'casts' => (array) $get('casts'), 'mode' => $get('mode'), 'many' => $get('many'), 'rule' => $get('rule'),
-                            ]))
-                            ->action(function (Get $get, Set $set): void {
-                                $rule = (array) $get('rule');
-                                $set('target', $rule['target'] ?? null);
-                                $set('casts', $rule['casts'] ?? []);
-                                $set('mode', $rule['mode'] ?? 'lookup');
-                                $set('many', $rule['many'] ?? 'add');
-                            }),
                     ]),
-                ])
-                ->itemLabel(fn (array $state): string => (string) ($state['header'] ?? '')),
+                ]),
             Group::make($this->importerOptions($definition))->statePath('options')->visible($definition->importer !== null && $this->importerOptions($definition) !== []),
             Grid::make(['default' => 1, 'md' => 2])->schema([
                 TextInput::make('preset_name')->label($t('save_preset'))->helperText($t('save_preset_help'))->maxLength(120)->visible(fn (): bool => Presets::enabled()),

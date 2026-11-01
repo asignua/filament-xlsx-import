@@ -1,0 +1,222 @@
+{
+  "base": "http://host.docker.internal:8741",
+  "login": {
+    "path": "/admin/login",
+    "email": "emma@example.com",
+    "password": "password"
+  },
+  "shots": [
+    {
+      "path": "/admin/products",
+      "out": "mapping.jpg",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1900
+      },
+      "actions": [
+        {
+          "click": "button:has-text(\"Import\") >> nth=0"
+        },
+        {
+          "waitFor": "input[type=file]"
+        },
+        {
+          "upload": [
+            "input[type=file]",
+            "/plugins/filament-xlsx-import/build/samples/supplier-art.xlsx"
+          ]
+        },
+        {
+          "waitFor": ".filepond--item[data-filepond-item-state=\"processing-complete\"]"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "click": ".fi-modal-window button:has-text(\"Next\")"
+        },
+        {
+          "waitFor": ".xi-source"
+        },
+        {
+          "wait": 700
+        },
+        {
+          "fill": [
+            "[id$=\"mapping.2.casts.1.arg\"]",
+            "."
+          ]
+        },
+        {
+          "wait": 900
+        }
+      ],
+      "clip": {
+        "x": 70,
+        "y": 0,
+        "width": 1300,
+        "height": 1040
+      }
+    },
+    {
+      "path": "/admin/products",
+      "out": "preview.jpg",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "actions": [
+        {
+          "click": "button:has-text(\"Import\") >> nth=0"
+        },
+        {
+          "waitFor": "input[type=file]"
+        },
+        {
+          "upload": [
+            "input[type=file]",
+            "/plugins/filament-xlsx-import/build/samples/supplier-art.xlsx"
+          ]
+        },
+        {
+          "waitFor": ".filepond--item[data-filepond-item-state=\"processing-complete\"]"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "click": ".fi-modal-window button:has-text(\"Next\")"
+        },
+        {
+          "waitFor": ".xi-source"
+        },
+        {
+          "wait": 700
+        },
+        {
+          "click": ".fi-modal-window button:has-text(\"Next\")"
+        },
+        {
+          "waitFor": ".xi-stats"
+        },
+        {
+          "wait": 600
+        }
+      ],
+      "clip": {
+        "x": 70,
+        "y": 100,
+        "width": 1300,
+        "height": 880
+      }
+    },
+    {
+      "path": "/admin/products",
+      "out": "mapping-dark.jpg",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 1900
+      },
+      "actions": [
+        {
+          "click": "button:has-text(\"Import\") >> nth=0"
+        },
+        {
+          "waitFor": "input[type=file]"
+        },
+        {
+          "upload": [
+            "input[type=file]",
+            "/plugins/filament-xlsx-import/build/samples/supplier-art.xlsx"
+          ]
+        },
+        {
+          "waitFor": ".filepond--item[data-filepond-item-state=\"processing-complete\"]"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "click": ".fi-modal-window button:has-text(\"Next\")"
+        },
+        {
+          "waitFor": ".xi-source"
+        },
+        {
+          "wait": 700
+        },
+        {
+          "fill": [
+            "[id$=\"mapping.2.casts.1.arg\"]",
+            "."
+          ]
+        },
+        {
+          "wait": 900
+        }
+      ],
+      "clip": {
+        "x": 70,
+        "y": 0,
+        "width": 1300,
+        "height": 1040
+      }
+    },
+    {
+      "path": "/admin/products",
+      "out": "preview-dark.jpg",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "actions": [
+        {
+          "click": "button:has-text(\"Import\") >> nth=0"
+        },
+        {
+          "waitFor": "input[type=file]"
+        },
+        {
+          "upload": [
+            "input[type=file]",
+            "/plugins/filament-xlsx-import/build/samples/supplier-art.xlsx"
+          ]
+        },
+        {
+          "waitFor": ".filepond--item[data-filepond-item-state=\"processing-complete\"]"
+        },
+        {
+          "wait": 400
+        },
+        {
+          "click": ".fi-modal-window button:has-text(\"Next\")"
+        },
+        {
+          "waitFor": ".xi-source"
+        },
+        {
+          "wait": 700
+        },
+        {
+          "click": ".fi-modal-window button:has-text(\"Next\")"
+        },
+        {
+          "waitFor": ".xi-stats"
+        },
+        {
+          "wait": 600
+        }
+      ],
+      "clip": {
+        "x": 70,
+        "y": 100,
+        "width": 1300,
+        "height": 880
+      }
+    }
+  ]
+}

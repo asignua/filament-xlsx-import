@@ -26,6 +26,10 @@
         .xi-table th { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; opacity: .7; }
         .xi-old { text-decoration: line-through; opacity: .55; }
         .xi-h { font-weight: 600; margin: 1rem 0 .4rem; }
+        .xi-casts .fi-fo-repeater-item { position: relative; }
+        .xi-casts .fi-fo-repeater-item-header { position: absolute; top: .4rem; right: .4rem; padding: 0; margin: 0; border: 0; background: none; z-index: 2; min-height: 0; }
+        .xi-casts .fi-fo-repeater-item-content { padding: .6rem 2.4rem .6rem .75rem; }
+        .xi-casts .fi-fo-repeater-items { gap: .5rem; }
         .xi-note { font-size: .85rem; opacity: .8; }
     </style>
 @endonce
