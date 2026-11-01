@@ -18,6 +18,7 @@ use Filament\Support\SupportServiceProvider;
 use Filament\Tables\TablesServiceProvider;
 use Filament\Widgets\WidgetsServiceProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Livewire\LivewireServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 use RyanChandler\BladeCaptureDirective\BladeCaptureDirectiveServiceProvider;
@@ -31,6 +32,10 @@ abstract class TestCase extends Orchestra
     protected function setUp(): void
     {
         parent::setUp();
+
+        if (!Schema::hasTable('xlsx_import_presets')) {
+            (require __DIR__.'/../database/migrations/create_xlsx_import_presets_table.php.stub')->up();
+        }
 
         $this->actingAs(User::factory()->create());
         Filament::setCurrentPanel('admin');
@@ -61,6 +66,9 @@ abstract class TestCase extends Orchestra
     {
         $app['config']->set('app.key', 'base64:'.base64_encode(str_repeat('a', 32)));
         $app['config']->set('database.default', 'testing');
+        // Filament 5.11's NotificationMailbox takes a cache lock.
+        $app['config']->set('cache.default', 'array');
+        $app['config']->set('queue.default', 'sync');
         $app['config']->set('auth.providers.users.model', User::class);
     }
 

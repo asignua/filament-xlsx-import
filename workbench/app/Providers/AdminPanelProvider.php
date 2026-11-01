@@ -6,6 +6,8 @@ namespace Workbench\App\Providers;
 
 use Asignua\FilamentXlsxImport\XlsxImportPlugin;
 use Filament\Http\Middleware\Authenticate;
+use Workbench\App\Filament\Resources\Contacts\ContactResource;
+use Workbench\App\Filament\Resources\Products\ProductResource;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Panel;
@@ -27,6 +29,8 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
+            ->databaseNotifications()
+            ->resources([ProductResource::class, ContactResource::class])
             ->plugin(XlsxImportPlugin::make())
             ->middleware([
                 EncryptCookies::class,

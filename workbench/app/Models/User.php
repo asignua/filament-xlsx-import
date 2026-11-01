@@ -8,6 +8,7 @@ use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
 use Workbench\Database\Factories\UserFactory;
 
 /**
@@ -20,6 +21,10 @@ class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory;
+    use Notifiable;
+
+    /** A test switch: the user loses panel access. */
+    public static bool $denyPanel = false;
 
     protected $guarded = [];
 
@@ -32,7 +37,7 @@ class User extends Authenticatable implements FilamentUser
 
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->is_active;
+        return $this->is_active && !static::$denyPanel;
     }
 
     protected static function newFactory(): UserFactory

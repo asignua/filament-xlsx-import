@@ -25,6 +25,6 @@ class SmokeTest extends TestCase
 
     public function test_the_translations_are_loaded(): void
     {
-        $this->assertSame('Sample', __('filament-xlsx-import::filament-xlsx-import.sample'));
+        $this->assertSame('Import', __('filament-xlsx-import::filament-xlsx-import.import'));
     }
 }
