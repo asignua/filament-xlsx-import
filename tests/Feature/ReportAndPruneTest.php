@@ -37,12 +37,14 @@ class ReportAndPruneTest extends TestCase
      */
     private function runWithFailures(): string
     {
-        $file = Sheet::xlsx([
-            ['Артикул', 'Назва', 'Ціна', 'Memo'],
-            ['A', 'Good', '1', 'fine'],
-            ['', '=HYPERLINK("http://evil","click")', '2', '+cmd|calc'],
-            ['C', '', '3', '@SUM(1)'],
-        ]);
+        // Text cells that merely LOOK like formulas. (`Sheet::xlsx()` would save them as real formulas with no cached result, read as 0.)
+        $text = static fn (string $ref, string $value): string => '<c r="'.$ref.'" t="inlineStr"><is><t>'.htmlspecialchars($value, ENT_XML1).'</t></is></c>';
+        $file = Sheet::raw(
+            '<row r="1">'.$text('A1', 'Артикул').$text('B1', 'Назва').$text('C1', 'Ціна').$text('D1', 'Memo').'</row>'
+            .'<row r="2">'.$text('A2', 'A').$text('B2', 'Good').$text('C2', '1').$text('D2', 'fine').'</row>'
+            .'<row r="3">'.$text('A3', '').$text('B3', '=HYPERLINK("http://evil","click")').$text('C3', '2').$text('D3', '+cmd|calc').'</row>'
+            .'<row r="4">'.$text('A4', 'C').$text('B4', '').$text('C4', '3').$text('D4', '@SUM(1)').'</row>',
+        );
         $this->apply($this->upload($this->products(), $file));
 
         return $this->lastRunId;

@@ -88,6 +88,22 @@ class ImportFlowTest extends TestCase
         $this->assertCount(0, $bread->tags);
     }
 
+    public function test_a_formula_cell_imports_its_cached_result_not_the_formula(): void
+    {
+        $text = static fn (string $ref, string $value): string => '<c r="'.$ref.'" t="inlineStr"><is><t>'.$value.'</t></is></c>';
+        $file = Sheet::raw(
+            '<row r="1">'.$text('A1', 'Артикул').$text('B1', 'Назва').'</row>'
+            .'<row r="2">'.$text('A2', 'F-1').'<c r="B2" t="str"><f>IFERROR(1,"x")</f><v>Computed name</v></c></row>'
+            .'<row r="3"><c r="A3" t="str"><f>"F-"&amp;2</f><v>F-2</v></c>'.$text('B3', 'Plain').'</row>',
+        );
+
+        $this->apply($this->upload($this->products(), $file));
+
+        $this->assertSame('Computed name', Product::query()->where('sku', 'F-1')->value('name'));
+        $this->assertSame('Plain', Product::query()->where('sku', 'F-2')->value('name'));
+        $this->assertSame(0, Product::query()->where('name', 'like', '=%')->orWhere('sku', 'like', '=%')->count());
+    }
+
     public function test_the_dry_run_counts_everything_and_writes_nothing(): void
     {
         $existing = new Product;

@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace Asignua\FilamentXlsxImport\Support;
 
+use DateInterval;
 use DateTimeInterface;
 use Generator;
+use OpenSpout\Common\Entity\Cell;
+use OpenSpout\Common\Entity\Cell\FormulaCell;
+use OpenSpout\Common\Entity\Row;
 use OpenSpout\Reader\CSV\Options as CsvOptions;
 use OpenSpout\Reader\CSV\Reader as CsvReader;
 use OpenSpout\Reader\ODS\Options as OdsOptions;
@@ -100,7 +104,7 @@ final class SourceFile
                 foreach ($sheet->getRowIterator() as $row) {
                     $number++;
                     // A hostile or broken sheet can be thousands of columns wide: read one more than the limit, enough to notice.
-                    $cells = array_map(self::native(...), array_slice($row->toArray(), 0, self::maxColumns() + 1));
+                    $cells = array_map(self::native(...), self::values($row));
 
                     if (array_filter($cells, static fn (string|int|float|bool|DateTimeInterface $cell): bool => trim(self::stringify($cell)) !== '') === []) {
                         continue;
@@ -116,6 +120,21 @@ final class SourceFile
         } finally {
             $reader->close();
         }
+    }
+
+    /**
+     * A row's cell values, capped at one more than the column limit. A formula cell yields the result the spreadsheet app cached
+     * next to it (`getValue()` would return the formula text, e.g. `=+380501112233`); a null result means TEXT that merely starts with `=` (OpenSpout
+     * wraps every such string — CSV field, ODS or inline string — in a FormulaCell) or a formula that evaluated to an error: its own text is kept.
+     *
+     * @return list<mixed>
+     */
+    private static function values(Row $row): array
+    {
+        return array_values(array_map(
+            static fn (Cell $cell): mixed => $cell instanceof FormulaCell ? ($cell->getComputedValue() ?? $cell->getValue()) : $cell->getValue(),
+            array_slice($row->getCells(), 0, self::maxColumns() + 1),
+        ));
     }
 
     public static function native(mixed $value): string|int|float|bool|DateTimeInterface
@@ -308,6 +327,11 @@ final class SourceFile
 
         if ($value instanceof DateTimeInterface) {
             return $value->format($value->format('H:i:s') === '00:00:00' ? 'Y-m-d' : 'Y-m-d H:i:s');
+        }
+
+        if ($value instanceof DateInterval) {
+            // A duration cell ([h]:mm:ss): total hours, so 36:30:00 stays 36:30:00.
+            return sprintf('%s%d:%02d:%02d', $value->invert ? '-' : '', $value->d * 24 + $value->h, $value->i, $value->s);
         }
 
         if (is_bool($value)) {

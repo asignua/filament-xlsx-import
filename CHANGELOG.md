@@ -20,6 +20,8 @@ First release.
 - `->saveUsing()` for repository-only apps, `->authorizeRecords()`, file size and row limits.
 - English and Ukrainian translations. Tested on Filament 5.11.
 
+- Formula cells import the result the spreadsheet app cached next to the formula, not the formula text (`=+380501112233`, `=COUNTIF(…)`); a formula with no cached result is an empty cell. Duration cells (`[h]:mm:ss`) read as `36:30:00` instead of blank.
+
 Security hardening (from an independent review, before the first tag):
 
 - Zero config no longer offers the primary key, timestamps, `$hidden` attributes, secrets, privilege flags or the tenant column; `$fillable` restricts; `->only()` / `->except()` / `DefinesImport` `targets`; the key and every target are re-checked server-side.
