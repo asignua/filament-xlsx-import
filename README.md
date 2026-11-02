@@ -14,7 +14,7 @@ the casts, **preview every change without writing a row**, then apply — inline
 It is the import companion of [filament-xlsx-export](https://github.com/asignua/filament-xlsx-export) and a maintained
 successor of `eightynine/filament-excel-import` (Filament 4 only, [issue #63](https://github.com/eighty9nine/filament-excel-import/issues/63)).
 
-- Zero config: point it at a model. The targets come from the database columns, `$casts` and the `belongsTo` / `hasOne` relations — **minus everything a file must not touch** (see [What a file may write to](#what-a-file-may-write-to)). A Filament `Importer` class is optional — and works as it is when you have one.
+- Zero config: point it at a model. The targets follow what the model declares (`$fillable` / guarded), its `$casts` and its `belongsTo` / `hasOne` relations — **conservative, not safe**: see [What a file may write to](#what-a-file-may-write-to) and list the targets explicitly for user-, role- and billing-like models. A Filament `Importer` class is optional — and works as it is when you have one.
 - **Dry run** with a «will create / update / skip / fail» summary and the field-level diff of the updates, before anything is written.
 - **Casts per column** (trim, case, integer, decimal with `,` or `.`, yes/no incl. `так/ні`, date with a source format, enum value tables, JSON, split to a list, default, regex), chained, pre-selected from the model's `$casts`.
 - **Model rules** (`DefinesImport`): aliases, casts, validation, upsert key, relation behaviour — pre-filled and marked «from model rules»; the user may change them **for one run**, with «Reset to model rule».
@@ -104,12 +104,14 @@ upsert is whatever its `resolveRecord()` does; `->updateBy()` is for the model m
 
 ## What a file may write to
 
-An import runs with `forceFill()` (so mass assignment can stay off). That makes the list of targets a security decision, so the zero-config list is conservative:
+An import runs with `forceFill()` (so mass assignment can stay off). That makes the list of targets a security decision. **Zero config follows what the developer declared, and it is conservative — not safe by itself.**
 
-- **Never offered:** the primary key, timestamps and `deleted_at`, every `$hidden` attribute, secrets (`password`, `remember_token`, `api_token`, `*_secret`, `*_token`, `two_factor_*`), privilege flags (`is_admin`, `role`, `permissions`…) and — when the panel has tenancy — the tenant ownership column.
-- A model with a non-empty **`$fillable`** is restricted to it (models with `$guarded = ['*']`, as in eEgnith, use the deny-list above).
-- **Relations:** `belongsTo` and `hasOne` are discovered; **`belongsToMany` only when you name it** (`->relations(['tags'])` or `'relations'` in `importRules()`); role/permission relations (spatie `Role`/`Permission`, relations named `roles`/`permissions`) are never offered unless you name them yourself.
-- The upsert key can only be one of the offered attributes — never the primary key — and the server re-checks every target and the key against that list, whatever the browser sends.
+- A model with a non-empty **`$fillable`**: exactly that list.
+- A model with `$guarded = [...]` (not `['*']`): every column that is not guarded.
+- A **totally guarded model** — `$guarded = ['*']`, or Eloquent's default with neither property (eEgnith's models are like this): **nothing is offered**. The import refuses to start and says, to the developer, to declare it: `->only([...])` on the action or `'targets'` in `importRules()`.
+- On top of that, never offered, whatever the model says: the primary key, timestamps and `deleted_at`, `$hidden` attributes, names that look like secrets or privileges (`password`, `*_token`, `*_secret`, `two_factor_*`, `is_admin`, `role`… — camelCase read as snake_case), the tenant ownership column under tenancy, **JSON columns** and **integer `*_id` foreign keys** (reach those through the relation lookup).
+- **Relations:** only `belongsTo` and `hasOne`; `belongsToMany` only when you name it (`->relations(['tags'])`). Related fields follow the same declaration rules **on the related model** (its `$fillable`/guarded, or list `relation.field` in `only`). The app's **login model** (`auth.providers.*.model`) and role/permission models are never discovered as a relation target; `->relations(['account'])` plus the field in `only` is the only way.
+- The upsert key can only be one of the offered attributes (never the primary key), and the server re-checks every target and the key against that list, whatever the browser sends.
 
 ```php
 XlsxImportAction::make()->model(Member::class)->only(['name', 'email', 'phone'])->updateBy('email');   // an explicit allowlist
@@ -117,11 +119,11 @@ XlsxImportAction::make()->model(Product::class)->except(['cost_price'])->relatio
 // or in DefinesImport::importRules(): 'targets' => [...], 'except' => [...], 'relations' => [...]
 ```
 
-`only()` may list the primary key or a secret: that is then your decision. **For user-like and role-like models always list the targets explicitly** — flags such as `is_active` or a custom `level` column cannot be recognised by name.
+`only()` may list the primary key or a secret: that is then your decision. **For user-like, role-like and billing-like models always list the targets explicitly** — flags such as `is_active`, `level`, `plan` cannot be recognised by name.
 
-**Authorization.** `->authorizeRecords()` checks the model policy for every row — `update` *after* the new values are in the model and before it is saved, so a policy that looks at the new state sees it. It is **on by default when a policy is registered for the model** (`->authorizeRecords(false)` switches it off); without a policy rows are not checked, as in Filament's own importer.
+**Authorization.** `->authorizeRecords()` checks the model policy for every row — `update` *after* the new values are in the model and before it is saved. It is **on by default when a policy is registered for the model** (`->authorizeRecords(false)` switches it off); without a policy rows are not checked, as in Filament's own importer. **Writing into a related record** (`hasOne`) is a write to that model: its `update` policy for an existing record, its `create` policy for a new one — without a policy it is refused unless you call `->allowCreatingRelated()`.
 
-**Related records.** «Create it» is a request, not a permission: a rule with `'mode' => 'lookup'` locks the relation (unless it says `'allow_create' => true`), and creating needs the related model's `create` policy for the user — without a policy it is refused unless you call `->allowCreatingRelated()`. Attaching to a parent requires `update` on the parent (the check above).
+**Related records.** «Create it» is a request, not a permission: a rule with `'mode' => 'lookup'` locks the relation (unless it also says `'allow_create' => true`), and creating needs the related model's `create` policy for the user — otherwise the option is not offered (the screen says why) and the server refuses it anyway. Attaching to a parent requires `update` on the parent (the check above).
 
 **Tenancy.** With a Filament tenant the lookup of existing records, the lookups and creations of related records are scoped to the current tenant (through the panel's ownership relationship), new records are stamped with it, and the tenant is restored in the queue worker. `->relatedQueryUsing(fn (Builder $query, string $relatedClass) => …)` narrows related lookups further (or covers models without the ownership relationship).
 
@@ -139,6 +141,8 @@ class Product extends Model implements DefinesImport
     {
         return [
             'update_by' => 'sku',
+            'targets' => ['sku', 'price', 'released_at', 'category.name', 'tags.name'],   // a guarded model must say what a file may write to
+            'relations' => ['tags'],
             'fields' => [
                 'sku' => ['aliases' => ['article', 'артикул'], 'casts' => ['trim', 'upper'], 'rules' => ['required', 'max:40'], 'required' => true],
                 'price' => ['casts' => ['trim', ['type' => 'decimal', 'arg' => ',']], 'rules' => ['numeric', 'min:0']],
@@ -151,7 +155,7 @@ class Product extends Model implements DefinesImport
 }
 ```
 
-Per field: `aliases` (header synonyms), `casts`, `rules` (Laravel validation, applied to the cast value), `required` (the column
+Besides `fields`: `targets` / `except` / `relations` (see [What a file may write to](#what-a-file-may-write-to)). Per field: `aliases` (header synonyms), `casts`, `rules` (Laravel validation, applied to the cast value), `required` (the column
 must be mapped), `mode` (`lookup` or `create`, for related records), `many` (`add` or `replace`, for many-to-many).
 The same array shape works in `XlsxImportAction::make()->fieldRules([...])->updateBy('sku')->aliases([...])` for one action.
 
@@ -165,25 +169,29 @@ Headers are matched in this order: the field name or label, your aliases, built-
 
 ## Casts
 
-A pipeline of steps per mapped column. Chosen in the UI, predefined in rules (`'trim'`, `'decimal:,'`, `['type' => 'date', 'arg' => 'd.m.Y']`):
+A pipeline of steps per mapped column. Chosen in the UI, predefined in rules (`'trim'`, `'decimal:,'`, `['type' => 'date', 'arg' => 'd.m.Y']`). Every column card shows a live line — the first sample of the file run through the pipeline («1,5 → 1.5»).
+
+**Cells keep their type.** A number cell reaches the casts as a number, a date cell as a date, a boolean cell as a boolean — separator rules and date formats are only for *text*. A cell holding `12.5` is 12.5 under a decimal-comma rule too (never 125); a date cell is a date whatever `d.m.Y` says about text dates. CSV cells are always text.
 
 | Step | What it does | Option |
 | --- | --- | --- |
 | `trim`, `string`, `upper`, `lower` | text | — |
-| `integer` | whole number, spaces and `5.0` tolerated | — |
-| `decimal` | `1.234,50` → `1234.50` | decimal separator `,` or `.` |
+| `integer` | whole number; `5.0` and spaces tolerated | — |
+| `decimal` | text → number | decimal separator (`.`, `,`, empty = auto) and thousands separator (`.`, `,`, `space`, `none`, empty = not declared) |
 | `boolean` | `1/true/yes/y/так/т/+/да/ja/tak/oui/si` and the opposites | true words, false words |
-| `date`, `datetime` | to `Y-m-d` / `Y-m-d H:i:s`; Excel serials understood | source format, e.g. `d.m.Y` |
-| `enum` | a **value table**: every distinct value found in the file, with what it becomes | enum class (optional: resolves case names, values and `getLabel()`) |
+| `date`, `datetime` | to `Y-m-d` / `Y-m-d H:i:s`; real date cells, ISO text and Excel serials are taken as they are | a format for text dates: picker (31.01.2026, 01/31/2026, 2026-01-31, 31/01/2026, …) or your own |
+| `enum` | a **value table**: every distinct value of the file → a *select of the enum cases with their labels*; names, values and labels are guessed case-insensitively | — |
 | `json` | decodes to an array | — |
 | `split` | `a; b;c` → list (for many-to-many and arrays) | separator |
 | `default` | when the cell is blank | the value |
 | `regex` | `preg_replace` | pattern, replacement |
 | `null_if_empty` | blank → `null` | — |
 
+**Text numbers are never guessed.** With an empty (auto) decimal separator `12,5` and `12.50` are decimals, `1.234,50` has its last separator as the decimal point, `1.234.567` is grouping — and a lone `1,234` / `1.234` (three digits after one separator) is **refused** as ambiguous. A rule that declares `,` refuses a lone `12.5`; declare both separators (`'arg' => ',', 'arg2' => '.'`) and `1.234` is 1234.
+
 The model's `$casts` and column types pre-select a sensible pipeline (`decimal:2` → trim + decimal, a backed enum → the value table, …).
 A value that does not fit fails **that row** with a message that names the field and the value («Price: "abc" is not a number»).
-**Blank cells are ignored** (they never wipe a field).
+**Blank cells are ignored**: they never wipe a field, and the validation rules of a field with no value do not run (`required` still does).
 
 ## Related records
 
@@ -289,32 +297,44 @@ the report route, schedule, CSV fallback encodings and delimiters, presets, defi
 | | **asignua/filament-xlsx-import** | eightynine/filament-excel-import | romansulzhyk/filament-import |
 | --- | --- | --- | --- |
 | Filament 5 | yes (tested on 5.11) | no stable release; `4.x` only ([#63](https://github.com/eighty9nine/filament-excel-import/issues/63)) | yes |
-| Works with no Importer / import class | yes — from the model | you write an import class | needs a Filament `Importer` |
-| Runs an existing Filament `Importer` | yes | no | yes |
-| xlsx / ods / csv | yes | xlsx / csv | xlsx / csv |
-| CSV encodings & delimiter sniffing | yes (BOM, UTF-16/32, 1251/1252) | — | yes |
-| Header → target mapping the user can correct | yes, with samples, casts, related records | — | automatic mapping (many languages) |
-| Related models (`belongsTo`, `hasOne`, many-to-many) | yes, lookup or create | via your code | via the Importer |
+| Zero-config import of a model | yes — from what the model declares, plus a mapping screen | yes — `ExcelImportAction::make()` maps the file's headers onto the model's `$fillable` | needs a Filament `Importer` |
+| Your own import class | a Filament `Importer` (`->importer()`) — not a Laravel Excel import class | a Laravel Excel import class (`use()`) | a Filament `Importer` |
+| xlsx / ods / csv | yes | xlsx / csv (Laravel Excel) | xlsx / csv |
+| CSV encodings & delimiter sniffing | yes (BOM, UTF-16/32, 1251/1252) | whatever Laravel Excel reads | yes |
+| User-corrected mapping with samples, casts, related records | yes | headers by name, no mapping screen | automatic mapping (many languages) |
+| Blank template download | yes — from the definition, rule-consistent examples, dropdowns for enums | yes (`sampleExcel()`) | no |
 | Dry run with a diff | yes | no | no |
-| Queue for big files + notification | yes | via Laravel Excel's queue | no |
+| Queue for big files + notification | yes (one chunked job) | via Laravel Excel's queue | no |
 | Failed-rows report as `.xlsx` | yes (text-only cells) | no | yes |
-| Template download with dropdowns | yes | no | no |
 | Saved presets | yes | no | no |
 | Interface languages | en, uk | — | 63 |
 
-The other two columns are read from their READMEs at the time of writing (November 2026) — check them for changes. We keep it honest: `romansulzhyk/filament-import` has far more interface translations and maps headers written in many languages out of
-the box; here the built-in synonyms cover en/uk/de/pl/fr/es and everything else is your aliases. Neither alternative has a
-dry run, presets or model-level rules; we have no other-language UI beyond English and Ukrainian yet.
+The other two columns are my reading of their READMEs in November 2026 — check them for changes. Be fair to them: `eightynine/filament-excel-import` is the simplest thing that works
+(one line, columns by header, a sample file) and has a long list of per-import closures (below) that this plugin deliberately does not copy; `romansulzhyk/filament-import` has far more interface translations
+and maps headers written in many languages out of the box (here the built-in synonyms cover en/uk/de/pl/fr/es and everything else is your aliases). What this plugin adds is the mapping/casts/dry-run/queue/preset layer
+and a stricter default about what a file may write to.
 
 ## Migrating from eightynine/filament-excel-import
 
 1. `composer remove eightynine/filament-excel-import && composer require asignua/filament-xlsx-import`.
-2. Replace the `ExcelImportAction` (the one that pointed at a Laravel Excel import class) with `XlsxImportAction::make()->model(Product::class)`.
-   If you had a Filament `Importer`, use `->importer(ProductImporter::class)` instead.
-3. What lived in the import class moves to [model rules](#model-rules): the column → attribute map to `aliases`,
-   `prepareForValidation` / casting to `casts`, the `rules()` array to `rules`, `updateOrCreate` keys to `update_by`.
-   Anything custom (a repository, events) goes to `->saveUsing()`.
+2. Replace the `ExcelImportAction` with `XlsxImportAction::make()->model(Product::class)`, or `->importer(ProductImporter::class)` if you have a Filament `Importer`.
+3. **`$fillable` means something different here.** There the columns are mapped onto `$fillable`. Here a non-empty `$fillable` is the whole list too — but a **totally guarded model** (`$guarded = ['*']`, or neither property) offers *nothing* until you say what: `->only([...])` or `'targets'` in `importRules()`. JSON columns, `*_id` keys, secrets and the primary key are never offered by themselves (see [What a file may write to](#what-a-file-may-write-to)).
 4. Queued imports: `->queue()` / `->queueWhenMoreThan(n)`, and make sure the panel has `->databaseNotifications()`.
+
+Their API, and what to use here (from their README; verify against the version you run):
+
+| eightynine | here |
+| --- | --- |
+| `use(ImportClass::class)` | `->importer(Importer::class)` for a Filament `Importer`; a Laravel Excel import class is **not supported** — move its mapping to [model rules](#model-rules) |
+| `validateUsing([...])` | `'rules'` per field in `importRules()` / `->fieldRules([...])`; validation runs on the cast values and skips blank cells |
+| `mutateBeforeValidationUsing()` / `mutateAfterValidationUsing()` | [casts](#casts) (`trim`, `lower`, `regex`, `default`, `enum` value tables…); anything else → `->saveUsing()` |
+| `beforeImport()` / `afterImport()` | **not supported** as hooks; use model observers, or the hooks of a Filament `Importer` |
+| `additionalData()` / `customImportData()` | `->saveUsing(fn (array $data, ?Model $existing, ImportContext $ctx) => …)` to add values; a constant default per column is the `default` cast |
+| `beforeUploadField()` / `afterUploadField()` | **not supported** — the upload step is the plugin's |
+| `processCollectionUsing()` | `->saveUsing()` (per row, with the cast row and `ImportContext`) |
+| `sampleExcel()` | built in: «Download a blank template»; `->templateExample(false)` drops the example row |
+| `stopImportWith*` | **not supported**: a bad row is skipped and listed in the failed-rows report; `->maxRows()` and `->maxFileSize()` refuse a file up front |
+| `createOnly` / upsert via the import class | `->updateBy('email')`, `->createOnly()`, `->updateOnly()` |
 
 Your users now see a column-mapping step instead of a fixed layout; a model with `importRules()` pre-fills it, so for them the flow stays «upload → check → import».
 

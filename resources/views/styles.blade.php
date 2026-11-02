@@ -31,6 +31,7 @@
         .xi-casts .fi-fo-repeater-item-content { padding: .6rem 2.4rem .6rem .75rem; }
         .xi-casts .fi-fo-repeater-items { gap: .5rem; }
         .xi-sticky { position: sticky; top: 0; z-index: 5; padding: .4rem .75rem; border-radius: .5rem; background: color-mix(in oklab, Canvas 94%, currentColor 6%); backdrop-filter: blur(4px); font-weight: 600; }
+        .xi-hidden { display: none !important; }
         .xi-wrap { overflow-wrap: anywhere; word-break: break-word; }
         .xi-sample { font-family: ui-monospace, monospace; font-size: .8rem; overflow-wrap: anywhere; }
         .xi-chip { overflow-wrap: anywhere; }

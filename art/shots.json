@@ -12,7 +12,7 @@
       "theme": "light",
       "viewport": {
         "width": 1440,
-        "height": 1900
+        "height": 2000
       },
       "actions": [
         {
@@ -24,7 +24,7 @@
         {
           "upload": [
             "input[type=file]",
-            "/plugins/filament-xlsx-import/build/samples/supplier-art.xlsx"
+            "/plugins/filament-xlsx-import/build/samples/supplier-typed.xlsx"
           ]
         },
         {
@@ -43,10 +43,10 @@
           "wait": 700
         },
         {
-          "fill": [
-            "[id$=\"mapping.2.casts.1.arg\"]",
-            "."
-          ]
+          "click": ".fi-fo-repeater-item:has(.xi-header:text-is(\"Ціна\")) [role=combobox]:has-text(\"Comma\")"
+        },
+        {
+          "click": ".fi-select-input-option:visible >> text=Dot — 12.50"
         },
         {
           "wait": 900
@@ -54,9 +54,9 @@
       ],
       "clip": {
         "x": 70,
-        "y": 0,
+        "y": 560,
         "width": 1300,
-        "height": 1040
+        "height": 1100
       }
     },
     {
@@ -77,7 +77,7 @@
         {
           "upload": [
             "input[type=file]",
-            "/plugins/filament-xlsx-import/build/samples/supplier-art.xlsx"
+            "/plugins/filament-xlsx-import/build/samples/supplier-typed.xlsx"
           ]
         },
         {
@@ -118,7 +118,7 @@
       "theme": "dark",
       "viewport": {
         "width": 1440,
-        "height": 1900
+        "height": 2000
       },
       "actions": [
         {
@@ -130,7 +130,7 @@
         {
           "upload": [
             "input[type=file]",
-            "/plugins/filament-xlsx-import/build/samples/supplier-art.xlsx"
+            "/plugins/filament-xlsx-import/build/samples/supplier-typed.xlsx"
           ]
         },
         {
@@ -149,10 +149,10 @@
           "wait": 700
         },
         {
-          "fill": [
-            "[id$=\"mapping.2.casts.1.arg\"]",
-            "."
-          ]
+          "click": ".fi-fo-repeater-item:has(.xi-header:text-is(\"Ціна\")) [role=combobox]:has-text(\"Comma\")"
+        },
+        {
+          "click": ".fi-select-input-option:visible >> text=Dot — 12.50"
         },
         {
           "wait": 900
@@ -160,9 +160,9 @@
       ],
       "clip": {
         "x": 70,
-        "y": 0,
+        "y": 560,
         "width": 1300,
-        "height": 1040
+        "height": 1100
       }
     },
     {
@@ -183,7 +183,7 @@
         {
           "upload": [
             "input[type=file]",
-            "/plugins/filament-xlsx-import/build/samples/supplier-art.xlsx"
+            "/plugins/filament-xlsx-import/build/samples/supplier-typed.xlsx"
           ]
         },
         {

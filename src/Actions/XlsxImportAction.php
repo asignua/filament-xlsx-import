@@ -863,10 +863,10 @@ class XlsxImportAction extends Action
                                             Select::make('arg')
                                                 ->label(fn (Get $get): string => $t('cast_arg.'.($get('type') ?: 'none')))
                                                 ->options([
-                                                    '' => $t('decimal_auto'),
                                                     '.' => $t('decimal_dot'),
                                                     ',' => $t('decimal_comma'),
                                                 ])
+                                                ->placeholder($t('decimal_auto'))
                                                 ->native(false)
                                                 ->live()
                                                 ->visible(fn (Get $get): bool => $get('type') === 'decimal'),
@@ -884,12 +884,12 @@ class XlsxImportAction extends Action
                                             Select::make('arg2')
                                                 ->label($t('thousands_label'))
                                                 ->options([
-                                                    '' => $t('thousands_unknown'),
                                                     'none' => $t('thousands_none'),
                                                     'space' => $t('thousands_space'),
                                                     '.' => $t('thousands_dot'),
                                                     ',' => $t('thousands_comma'),
                                                 ])
+                                                ->placeholder($t('thousands_unknown'))
                                                 ->native(false)
                                                 ->live()
                                                 ->visible(fn (Get $get): bool => $get('type') === 'decimal'),
@@ -939,7 +939,7 @@ class XlsxImportAction extends Action
                                     ->visible(fn (Get $get): bool => filled($get('target')) && (array) $get('samples') !== []),
                             ]),
                         ]),
-                    ])->extraAttributes(fn (Get $get): array => $get('only_unmapped', isAbsolute: true) && filled($get('target')) ? ['style' => 'display: none'] : []),
+                    ])->extraAttributes(fn (Get $get): array => $get('../../only_unmapped') && filled($get('target')) ? ['class' => 'xi-hidden'] : []),
                 ]),
             Group::make($this->importerOptions($definition))->statePath('options')->visible($definition->importer !== null && $this->importerOptions($definition) !== []),
             Grid::make(['default' => 1, 'md' => 2])->schema([

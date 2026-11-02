@@ -9,3 +9,4 @@
 - Run `php artisan xlsx-import:prune` (scheduled daily) to delete old uploads and failed-row reports.
 - Zero config never offers the primary key, timestamps, `$hidden`/secret/privilege columns or the tenant column, and only `belongsTo`/`hasOne` relations; for user-like or role-like models list targets explicitly with `->only([...])`, `->relations([...])` or `'targets'` in `importRules()`. Creating related records needs their `create` policy or `->allowCreatingRelated()`; `authorizeRecords()` is on by default when a policy exists.
 - Re-running a half-finished import needs an upsert key (`->updateBy()`), otherwise the rows already saved are created again.
+- A fully guarded model (`$guarded = ['*']` or neither property — eEgnith's) offers NO targets: pass `->only([...])` or `'targets'` in `importRules()`. `$fillable` is used as the whole list; JSON columns and `*_id` keys are never offered; text decimals need a declared separator (a number cell is always safe).

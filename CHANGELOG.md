@@ -27,3 +27,10 @@ Security hardening (from an independent review, before the first tag):
 - `authorizeRecords()` checks after the new values are filled and defaults to on when the model has a policy.
 - Dry run and row transactions use the model's (and related models') connection; an implicit commit aborts the preview.
 - A crashed run reports how many rows were already saved; `queue.after` hook; the worker's URL root is restored; run ids are bound to user, guard, panel and target; presets are scoped by guard, panel and tenant and restore the key and mode; no SQL/bindings in row errors; row limit enforced while streaming and a column cap.
+
+Second review round (before the first tag):
+
+- Targets follow what the developer declared: `$fillable` is the whole list, a fully guarded model offers nothing until `->only()` / `targets`; JSON columns, `*_id` keys and camelCase secrets are never offered; related fields follow the related model's declaration; the login model is never an automatic relation target; `hasOne` writes need the related model's `update` / `create` policy.
+- Casts see the cell's own type: a number cell is never read with a thousands rule (12.5 stayed 12.5, not 125), text decimals are declared (decimal + thousands separator) or refused when ambiguous, real date cells and ISO/Excel-serial dates are taken before the text format, blanks skip field rules, the template examples follow the rules.
+- Mapping screen: «from model rules» and reset for whatever target is chosen, enum value table as a select of the cases with labels, date format picker, live «sample → result» line, «create» offered only when allowed (with the reason), «Auto» for CSV encoding/delimiter and the detected values shown, «show only unmapped columns» and a sticky list of the required fields still unmapped.
+- README: fair comparison with eightynine/filament-excel-import and a migration table of its API.
