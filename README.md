@@ -24,7 +24,7 @@ successor of `eightynine/filament-excel-import` (Filament 4 only, [issue #63](ht
 - **Template download**: a blank `.xlsx` with the headers, an example row and real dropdowns for enum columns.
 - CSV: BOM, UTF-16/32, Windows-1251/1252 detected, delimiter sniffed; sheet picker for workbooks.
 - Works with mass assignment **off** (attributes are assigned explicitly) and with repository-only apps (`->saveUsing()`).
-- English and Ukrainian interface.
+- Interface in 10 languages: de, en, es, fr, it, nl, pl, pt_BR, tr, uk.
 
 - [Screenshots](#screenshots)
 - [Requirements](#requirements)
