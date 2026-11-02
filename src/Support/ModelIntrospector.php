@@ -165,6 +165,26 @@ final class ModelIntrospector
     }
 
     /**
+     * Names of the model's belongsTo relations that use this foreign key column.
+     *
+     * @param class-string<Model> $modelClass
+     *
+     * @return list<string>
+     */
+    public static function belongsToByForeignKey(string $modelClass, string $foreignKey): array
+    {
+        $names = [];
+
+        foreach (self::relations(new $modelClass) as $name => [$kind, , $key]) {
+            if ($kind === 'belongsTo' && $key === $foreignKey) {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
      * @param list<string>|null $only
      * @param list<string>      $except
      * @param list<string>      $allowlist

@@ -43,3 +43,11 @@ Final review round (before the first tag):
 - A model with nothing to offer hides the button (a developer error with `app.debug`), logged once per class.
 - Relation managers: records are created/looked up/attached through the owner's relationship (hasMany, hasOne, morphMany, belongsToMany), the owner's key is never a target.
 - `->fixedAttributes()`: server-side values merged into every row.
+
+Focused security round:
+
+- Relation manager (hasMany): the inverse `belongsTo` of the owner relation is no target and the owner's key is re-applied to existing records — a file cannot move a record to another owner.
+- The button is hidden through `isHidden()` (a model with no ATTRIBUTE targets, relation-only targets included); the upload refuses by the same rule.
+- Relation manager (belongsToMany): existing shared records are attached, not rewritten (`->updateAttachedRecords()` opts in); attaching needs the owner policy's `attach` / `attachAny` / `update`.
+- `fixedAttributes()`: plain keys are trusted developer input (documented).
+

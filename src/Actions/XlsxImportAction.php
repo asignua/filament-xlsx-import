@@ -13,6 +13,7 @@ use Asignua\FilamentXlsxImport\Support\DryRunAborted;
 use Asignua\FilamentXlsxImport\Support\ImportNotifier;
 use Asignua\FilamentXlsxImport\Support\ImportRunner;
 use Asignua\FilamentXlsxImport\Support\Mapping;
+use Asignua\FilamentXlsxImport\Support\ModelIntrospector;
 use Asignua\FilamentXlsxImport\Support\Presets;
 use Asignua\FilamentXlsxImport\Support\QueuedImports;
 use Asignua\FilamentXlsxImport\Support\RunContext;
@@ -103,6 +104,8 @@ class XlsxImportAction extends Action
     protected bool $allowCreatingRelated = false;
 
     protected bool $allowUpdatingRelatedWithoutPolicy = false;
+
+    protected bool $updateAttachedRecords = false;
 
     protected string|Closure|null $relatedQueryCallback = null;
 
@@ -275,6 +278,17 @@ class XlsxImportAction extends Action
     }
 
     /**
+     * Many-to-many relation manager: records that already exist are only ATTACHED to the owner by default — their attributes are
+     * shared with every other owner and are not rewritten from a file. This opts in to updating them too (they still need their own policy).
+     */
+    public function updateAttachedRecords(bool $condition = true): static
+    {
+        $this->updateAttachedRecords = $condition;
+
+        return $this;
+    }
+
+    /**
      * DANGEROUS: lets a file change an EXISTING related record (a `hasOne` such as an account) when its model has no `update`
      * policy. `allowCreatingRelated()` never does that; this does, for every row. Prefer a policy.
      */
@@ -384,23 +398,32 @@ class XlsxImportAction extends Action
      * With nothing a file may write to (a fully guarded model that was not given targets) the button is not shown at all — an
      * admin cannot fix that, a developer must: with `app.debug` on the page says so loudly instead.
      */
-    public function isVisible(): bool
+    public function isHidden(): bool
     {
-        if (!parent::isVisible()) {
-            return false;
+        if (parent::isHidden()) {
+            return true;
         }
 
         $definition = $this->definitionFor($this->getLivewire());
 
-        if ($definition->importer !== null || array_filter($definition->targets, static fn (TargetField $t): bool => !$t->isRelation()) !== []) {
-            return true;
+        if ($this->hasAttributeTargets($definition)) {
+            return false;
         }
 
         if ((bool) config('app.debug')) {
-            throw new LogicException((string) $definition->notice);
+            throw new LogicException((string) ($definition->notice ?? __('filament-xlsx-import::filament-xlsx-import.notice_no_targets', ['model' => class_basename($definition->model)])));
         }
 
-        return false;
+        return true;
+    }
+
+    /**
+     * A file can only write to a record through attributes of its own: relation targets alone (a fully guarded model whose
+     * only declared targets are `category.name`…) are not an import.
+     */
+    private function hasAttributeTargets(Definition $definition): bool
+    {
+        return $definition->importer !== null || array_filter($definition->targets, static fn (TargetField $t): bool => !$t->isRelation()) !== [];
     }
 
     public function definitionFor(mixed $livewire = null): Definition
@@ -445,7 +468,10 @@ class XlsxImportAction extends Action
         $owner = $this->ownerRelation();
 
         if ($owner instanceof HasOneOrMany) {
-            $overrides['except'] = array_values(array_unique([...($overrides['except'] ?? []), $owner->getForeignKeyName(), ...($owner instanceof MorphOneOrMany ? [$owner->getMorphType()] : [])]));
+            // The inverse belongsTo of the owner relation (`category.name` inside the category's products) would re-point a record to
+            // another owner: it is no target here, only the owner decides.
+            $inverse = ModelIntrospector::belongsToByForeignKey($owner->getRelated()::class, $owner->getForeignKeyName());
+            $overrides['except'] = array_values(array_unique([...($overrides['except'] ?? []), $owner->getForeignKeyName(), ...$inverse, ...($owner instanceof MorphOneOrMany ? [$owner->getMorphType()] : [])]));
         }
 
         return $overrides;
@@ -691,7 +717,7 @@ class XlsxImportAction extends Action
             $this->stop('no_file');
         }
 
-        if ($definition->importer === null && $definition->targets === []) {
+        if (!$this->hasAttributeTargets($definition)) {
             Notification::make()->danger()->title($definition->notice ?? __('filament-xlsx-import::filament-xlsx-import.notice_no_targets', ['model' => class_basename($definition->model)]))->persistent()->send();
 
             throw new Halt;
@@ -1289,6 +1315,7 @@ class XlsxImportAction extends Action
             'fixed' => is_string($this->fixedCallback) ? $this->fixedCallback : null,
             'owner' => $this->ownerSpec(),
             'allow_update_related_without_policy' => $this->allowUpdatingRelatedWithoutPolicy,
+            'update_attached' => $this->updateAttachedRecords,
             'related_query' => is_string($this->relatedQueryCallback) ? $this->relatedQueryCallback : null,
             'max_rows' => $this->limitRows(),
             'options' => (array) ($data['options'] ?? []),

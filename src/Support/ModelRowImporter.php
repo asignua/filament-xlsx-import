@@ -93,7 +93,11 @@ final class ModelRowImporter implements RowImporter
 
             $this->validate($attributes, $relations, $existing === null);
 
-            $changes = $existing !== null ? $this->diff($existing, $attributes, $relations) : $this->newValues($attributes, $relations);
+            $changes = match (true) {
+                $existing === null => $this->newValues($attributes, $relations),
+                $this->attachOnly() => [],
+                default => $this->diff($existing, $attributes, $relations),
+            };
 
             // A record found by its key that is not yet attached to the owner (relation manager, many-to-many) still has to be attached.
             if ($existing !== null && $changes === [] && $this->owner instanceof BelongsToMany && !$this->isAttached($existing)) {
@@ -287,6 +291,17 @@ final class ModelRowImporter implements RowImporter
             return;
         }
 
+        // Many-to-many relation manager: an existing record is shared with other owners — it is attached, not rewritten.
+        if ($existing !== null && $this->attachOnly()) {
+            $this->authorizeAttach($existing);
+
+            if ($this->owner instanceof BelongsToMany) {
+                $this->owner->syncWithoutDetaching([$existing->getKey()]);
+            }
+
+            return;
+        }
+
         $model = $existing ?? new ($this->definition->model);
 
         foreach ($relations as $name => $info) {
@@ -306,14 +321,17 @@ final class ModelRowImporter implements RowImporter
 
         if ($existing === null) {
             TenantScope::assign($model);
-            $this->ownRecord($model);
         }
+
+        // The owner's key is applied to every record, existing or new, after anything else ran: defence in depth.
+        $this->ownRecord($model);
 
         // After the new values are in the model: a policy that looks at the record sees what is about to be saved.
         $this->authorize($model);
         $model->save();
 
         if ($this->owner instanceof BelongsToMany) {
+            $this->authorizeAttach($model);
             $this->owner->syncWithoutDetaching([$model->getKey()]);
         }
 
@@ -407,6 +425,40 @@ final class ModelRowImporter implements RowImporter
 
         if ($this->owner instanceof MorphOneOrMany) {
             $model->setAttribute($this->owner->getMorphType(), $this->owner->getMorphClass());
+        }
+    }
+
+    private function attachOnly(): bool
+    {
+        return $this->owner instanceof BelongsToMany && ($this->spec['update_attached'] ?? false) !== true;
+    }
+
+    /**
+     * Attaching needs what Filament's AttachAction needs: the owner policy's `attach` (or `attachAny`) when it defines one,
+     * else the owner's `update`. An owner without a policy is not restricted, as everywhere in Filament.
+     */
+    private function authorizeAttach(Model $related): void
+    {
+        if (!$this->owner instanceof BelongsToMany || $this->user === null) {
+            return;
+        }
+
+        $owner = $this->owner->getParent();
+        $policy = Gate::getPolicyFor($owner);
+
+        if ($policy === null) {
+            return;
+        }
+
+        $gate = Gate::forUser($this->user);
+        $allowed = match (true) {
+            method_exists($policy, 'attach') => $gate->allows('attach', [$owner, $related]),
+            method_exists($policy, 'attachAny') => $gate->allows('attachAny', $owner),
+            default => $gate->allows('update', $owner),
+        };
+
+        if (!$allowed) {
+            throw new RowFailed(__('filament-xlsx-import::filament-xlsx-import.row.attach_unauthorized'));
         }
     }
 

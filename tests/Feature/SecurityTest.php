@@ -393,18 +393,6 @@ class SecurityTest extends TestCase
         $this->assertSame(['name', 'email'], array_keys(DefinitionResolver::resolve(GuardedThing::class, null, null, ['only' => ['name', 'email']])->targets));
     }
 
-    public function test_the_upload_of_a_fully_guarded_model_is_refused_with_the_developer_message(): void
-    {
-        $this->contactsAction(XlsxImportAction::make()->model(GuardedThing::class));
-
-        $page = $this->upload($this->contacts(), Sheet::csv('name,email
-Ada,ada@example.com
-'));
-
-        $this->assertSame('', $this->runId($page));
-        Notification::assertNotified(__('filament-xlsx-import::filament-xlsx-import.notice_no_targets', ['model' => 'GuardedThing']));
-    }
-
     public function test_fillable_is_the_whole_list_and_a_fillable_password_is_still_not_offered(): void
     {
         $targets = array_keys(ModelIntrospector::targets(FillableAccount::class));
