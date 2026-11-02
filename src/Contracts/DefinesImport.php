@@ -28,7 +28,10 @@ namespace Asignua\FilamentXlsxImport\Contracts;
 interface DefinesImport
 {
     /**
-     * @return array{update_by?: string|null, fields?: array<string, array<string, mixed>>}
+     * Besides `update_by` and `fields`: `targets` (an explicit allowlist of what a file may write to: attributes and `relation.field`),
+     * `except`, and `relations` (belongsToMany relations to offer — never discovered automatically). Per field `allow_create` (see `mode`).
+     *
+     * @return array{update_by?: string|null, targets?: list<string>, except?: list<string>, relations?: list<string>, fields?: array<string, array<string, mixed>>}
      */
     public static function importRules(): array;
 }

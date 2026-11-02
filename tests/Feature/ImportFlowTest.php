@@ -335,7 +335,7 @@ class ImportFlowTest extends TestCase
 
         $page = $this->upload($this->products(), $file);
 
-        Notification::assertNotified(__('filament-xlsx-import::filament-xlsx-import.too_many_rows', ['count' => 3, 'limit' => 2]));
+        Notification::assertNotified(__('filament-xlsx-import::filament-xlsx-import.too_many_rows', ['limit' => 2]));
         $this->assertSame('', $this->runId($page));
     }
 

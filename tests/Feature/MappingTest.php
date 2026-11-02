@@ -17,7 +17,7 @@ class MappingTest extends TestCase
 {
     public function test_targets_come_from_the_database_the_casts_and_the_relations(): void
     {
-        $targets = ModelIntrospector::targets(Product::class);
+        $targets = ModelIntrospector::targets(Product::class, ['relations' => ['tags']]);
 
         $this->assertArrayHasKey('sku', $targets);
         $this->assertArrayHasKey('price', $targets);
@@ -40,7 +40,7 @@ class MappingTest extends TestCase
 
         $this->assertFalse($definition->hasRules);
         $this->assertNull($definition->updateBy);
-        $this->assertSame(['id', 'name', 'email', 'phone', 'city'], array_keys($definition->targets));
+        $this->assertSame(['name', 'email', 'phone', 'city'], array_keys($definition->targets), 'The primary key is never offered.');
     }
 
     public function test_the_models_own_rules_are_read_and_marked(): void

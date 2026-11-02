@@ -42,8 +42,26 @@ return new class extends Migration
             $table->timestamps();
         });
 
+        Schema::create('teams', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
+
+        Schema::create('roles', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name')->unique();
+            $table->timestamps();
+        });
+
+        Schema::create('role_user', function (Blueprint $table): void {
+            $table->foreignId('role_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+        });
+
         Schema::create('categories', function (Blueprint $table): void {
             $table->id();
+            $table->foreignId('team_id')->nullable();
             $table->string('name');
             $table->string('slug')->nullable();
             $table->timestamps();
@@ -57,6 +75,7 @@ return new class extends Migration
 
         Schema::create('products', function (Blueprint $table): void {
             $table->id();
+            $table->foreignId('team_id')->nullable();
             $table->string('sku')->unique();
             $table->string('name');
             $table->decimal('price', 10, 2)->default(0);

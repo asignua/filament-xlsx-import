@@ -8,6 +8,7 @@ use Asignua\FilamentXlsxImport\Data\Definition;
 use Asignua\FilamentXlsxImport\Support\CastPipeline;
 use Asignua\FilamentXlsxImport\Support\CsvNormalizer;
 use Asignua\FilamentXlsxImport\Support\DefinitionResolver;
+use Asignua\FilamentXlsxImport\Support\DryRunAborted;
 use Asignua\FilamentXlsxImport\Support\ImportNotifier;
 use Asignua\FilamentXlsxImport\Support\ImportRunner;
 use Asignua\FilamentXlsxImport\Support\Mapping;
@@ -17,6 +18,7 @@ use Asignua\FilamentXlsxImport\Support\RunContext;
 use Asignua\FilamentXlsxImport\Support\RunStore;
 use Asignua\FilamentXlsxImport\Support\SourceFile;
 use Asignua\FilamentXlsxImport\Support\TemplateBuilder;
+use Asignua\FilamentXlsxImport\Support\TenantScope;
 use Closure;
 use Filament\Actions\Action;
 use Filament\Actions\Imports\Importer;
@@ -41,6 +43,7 @@ use Filament\Support\Exceptions\Halt;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Contracts\HasTable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Gate;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
@@ -80,7 +83,20 @@ class XlsxImportAction extends Action
 
     protected ?int $maxRowCount = null;
 
-    protected bool $authorizeRecords = false;
+    protected ?bool $authorizeRecords = null;
+
+    /** @var list<string>|null */
+    protected ?array $onlyTargets = null;
+
+    /** @var list<string> */
+    protected array $exceptTargets = [];
+
+    /** @var list<string> */
+    protected array $manyRelations = [];
+
+    protected bool $allowCreatingRelated = false;
+
+    protected string|Closure|null $relatedQueryCallback = null;
 
     protected string|Closure|null $saveUsingCallback = null;
 
@@ -191,11 +207,72 @@ class XlsxImportAction extends Action
     }
 
     /**
-     * Check the model's policy (`create` / `update`) for every row; a denied row fails with its reason in the report.
+     * Check the model's policy (`create` / `update`) for every row — `update` after the new values are in the model,
+     * before it is saved; a denied row fails with its reason in the report. When a policy is registered for the model
+     * this is ON unless you pass `false`; without a policy it is off (Filament's own importer does no per-row checks).
      */
     public function authorizeRecords(bool $condition = true): static
     {
         $this->authorizeRecords = $condition;
+
+        return $this;
+    }
+
+    /**
+     * An explicit allowlist of what a file may write to: attributes and `relation.field`. May name the primary key or a
+     * secret — that is then your decision. Recommended for user-like and role-like models.
+     *
+     * @param list<string> $targets
+     */
+    public function only(array $targets): static
+    {
+        $this->onlyTargets = $targets;
+
+        return $this;
+    }
+
+    /**
+     * @param list<string> $targets attributes, `relation.field` or a relation name
+     */
+    public function except(array $targets): static
+    {
+        $this->exceptTargets = $targets;
+
+        return $this;
+    }
+
+    /**
+     * belongsToMany relations to offer (never discovered automatically; role/permission relations need an explicit entry too).
+     *
+     * @param list<string> $relations
+     */
+    public function relations(array $relations): static
+    {
+        $this->manyRelations = $relations;
+
+        return $this;
+    }
+
+    /**
+     * «Create it» for a missing related record needs the related model's `create` policy for the user; without a policy it
+     * is refused — unless you say so here. A rule `'mode' => 'lookup'` stays a lock either way.
+     */
+    public function allowCreatingRelated(bool $condition = true): static
+    {
+        $this->allowCreatingRelated = $condition;
+
+        return $this;
+    }
+
+    /**
+     * Narrow every lookup/create of a related record, e.g. to the tenant's own: `fn (Builder $query, string $relatedClass) => $query->where(…)`.
+     * To run queued, give an invokable class name.
+     *
+     * @param class-string|Closure $callback
+     */
+    public function relatedQueryUsing(string|Closure $callback): static
+    {
+        $this->relatedQueryCallback = $callback;
 
         return $this;
     }
@@ -280,13 +357,41 @@ class XlsxImportAction extends Action
             $model = $livewire->getTable()->getModel();
         }
 
+        return $this->resolved = DefinitionResolver::resolve(is_string($model) ? $model : null, $this->importerClass, $this->definitionClass, $this->overrides());
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function overrides(): array
+    {
         $overrides = ['update_by' => $this->updateByKey, 'fields' => $this->fieldRules];
 
         foreach ($this->extraAliases as $key => $aliases) {
             $overrides['fields'][$key]['aliases'] = $aliases;
         }
 
-        return $this->resolved = DefinitionResolver::resolve(is_string($model) ? $model : null, $this->importerClass, $this->definitionClass, $overrides);
+        if ($this->onlyTargets !== null) {
+            $overrides['only'] = $this->onlyTargets;
+        }
+
+        if ($this->exceptTargets !== []) {
+            $overrides['except'] = $this->exceptTargets;
+        }
+
+        if ($this->manyRelations !== []) {
+            $overrides['relations'] = $this->manyRelations;
+        }
+
+        return $overrides;
+    }
+
+    /**
+     * The run id comes from a hidden form field: only the user's own run, in this panel, for this import, is accepted.
+     */
+    private function ownRun(?string $id, Definition $definition): bool
+    {
+        return is_string($id) && $id !== '' && RunStore::ownedBy($id, Filament::auth()->id(), Filament::getAuthGuard(), Filament::getCurrentPanel()?->getId(), $definition->key());
     }
 
     private function dryRunOn(): bool
@@ -323,11 +428,15 @@ class XlsxImportAction extends Action
 
         if ($this->dryRunOn()) {
             $steps[] = Step::make($t('step_preview'))->schema([
-                View::make('filament-xlsx-import::preview')->viewData(fn (Get $get): array => [
-                    'preview' => $get('run_id') ? (RunStore::meta((string) $get('run_id'))['preview'] ?? null) : null,
-                    'rows' => $get('run_id') ? (int) (RunStore::meta((string) $get('run_id'))['rows'] ?? 0) : 0,
-                    'queued' => $this->willQueue((int) (RunStore::meta((string) $get('run_id'))['rows'] ?? 0)),
-                ]),
+                View::make('filament-xlsx-import::preview')->viewData(function (Get $get) use ($definition): array {
+                    $meta = $this->ownRun($get('run_id'), $definition) ? RunStore::meta((string) $get('run_id')) : [];
+
+                    return [
+                        'preview' => $meta['preview'] ?? null,
+                        'rows' => (int) ($meta['rows'] ?? 0),
+                        'queued' => $this->willQueue((int) ($meta['rows'] ?? 0)),
+                    ];
+                }),
             ]);
         }
 
@@ -512,11 +621,11 @@ class XlsxImportAction extends Action
         $presetId = $get('preset_id');
         $signature = md5(implode('|', [$file->getFilename(), $sheet, $encoding, $delimiter, (string) $presetId]));
 
-        if ($get('stage_sig') === $signature && is_string($get('run_id')) && RunStore::exists((string) $get('run_id'))) {
+        if ($get('stage_sig') === $signature && $this->ownRun($get('run_id'), $definition)) {
             return;
         }
 
-        if (is_string($get('run_id')) && $get('run_id') !== '') {
+        if ($this->ownRun($get('run_id'), $definition)) {
             RunStore::forget((string) $get('run_id'));
         }
 
@@ -542,7 +651,7 @@ class XlsxImportAction extends Action
                 $this->copyUpload($file, RunStore::path($id, 'source.'.$extension));
             }
 
-            $scan = RunStore::source($id)->scan($sheet);
+            $scan = RunStore::source($id)->scan($sheet, maxRows: $this->limitRows());
         } catch (Throwable $e) {
             RunStore::forget($id);
             report($e);
@@ -554,11 +663,16 @@ class XlsxImportAction extends Action
             $this->stop('empty_file');
         }
 
+        if (count($scan['headers']) > SourceFile::maxColumns()) {
+            RunStore::forget($id);
+            $this->stop('too_many_columns', ['limit' => SourceFile::maxColumns()]);
+        }
+
         $max = $this->limitRows();
 
         if ($max !== null && $scan['rows'] > $max) {
             RunStore::forget($id);
-            $this->stop('too_many_rows', ['count' => number_format($scan['rows']), 'limit' => number_format($max)]);
+            $this->stop('too_many_rows', ['count' => number_format($max).'+', 'limit' => number_format($max)]);
         }
 
         RunStore::put($id, ['headers' => $scan['headers'], 'rows' => $scan['rows']]);
@@ -568,9 +682,14 @@ class XlsxImportAction extends Action
         $set('run_id', $id);
         $set('stage_sig', $signature);
         $set('mapping', Mapping::initial($definition, $scan['headers'], $scan['samples'], $scan['distinct'], $preset?->mapping));
-        $set('update_by', $this->updateByKey ?? $definition->updateBy);
-        $set('existing', $this->existingMode);
-        $set('options', is_array($preset?->options) ? ($preset->options['importer'] ?? []) : []);
+        // What the preset remembered about the key and the existing-record mode wins over the defaults — when still valid.
+        $saved = is_array($preset?->options) ? $preset->options : [];
+        $savedKey = $saved['update_by'] ?? null;
+        $key = is_string($savedKey) && ($definition->target($savedKey)?->isRelation() === false) ? $savedKey : ($this->updateByKey ?? $definition->updateBy);
+        $savedExisting = $saved['existing'] ?? null;
+        $set('update_by', $key);
+        $set('existing', in_array($savedExisting, ['update', 'skip', 'only'], true) ? $savedExisting : $this->existingMode);
+        $set('options', is_array($saved['importer'] ?? null) ? $saved['importer'] : []);
         $set('file_summary', $name.' · '.__('filament-xlsx-import::filament-xlsx-import.summary_rows', ['rows' => number_format($scan['rows']), 'columns' => count($scan['headers'])]));
     }
 
@@ -778,6 +897,19 @@ class XlsxImportAction extends Action
         $mapping = Mapping::fromState((array) ($data['mapping'] ?? []));
         $mapped = array_values(array_filter(array_column($mapping, 'target')));
 
+        // The mapping is client state: only targets the definition offers can be written to, and the key is one of them.
+        foreach ($mapped as $target) {
+            if ($definition->target($target) === null) {
+                $this->stop('invalid_target');
+            }
+        }
+
+        $key = filled($data['update_by'] ?? null) ? (string) $data['update_by'] : null;
+
+        if ($definition->importer === null && $key !== null && ($definition->target($key) === null || $definition->target($key)->isRelation())) {
+            $this->stop('invalid_target');
+        }
+
         if (count($mapped) !== count(array_unique($mapped))) {
             $duplicates = array_keys(array_filter(array_count_values($mapped), static fn (int $n): bool => $n > 1));
             $this->stop('duplicate_target', ['field' => implode(', ', array_map(fn (string $k): string => $definition->target($k)->label ?? $k, $duplicates))]);
@@ -808,6 +940,10 @@ class XlsxImportAction extends Action
 
     private function checkImportMapping(Get $get, Set $set, Definition $definition): void
     {
+        if (!$this->ownRun($get('run_id'), $definition)) {
+            $this->stop('run_gone');
+        }
+
         $this->assertMappingValid($definition, $this->importFormState($get));
 
         if (!$this->dryRunOn()) {
@@ -817,7 +953,9 @@ class XlsxImportAction extends Action
         $spec = $this->importSpec($this->importFormState($get), $definition);
 
         try {
-            $result = RunContext::within($spec, fn () => ImportRunner::run($spec, true, $this->saveUsingClosure()));
+            $result = RunContext::within($spec, fn () => ImportRunner::run($spec, true, $this->saveUsingClosure(), null, $this->relatedQueryClosure()));
+        } catch (DryRunAborted) {
+            $this->stop('dry_run_aborted');
         } catch (Throwable $e) {
             report($e);
             $this->stop('dry_run_failed');
@@ -857,11 +995,14 @@ class XlsxImportAction extends Action
             'model' => $definition->model,
             'importer' => $definition->importer,
             'definition' => $this->definitionClass,
-            'overrides' => ['update_by' => $this->updateByKey, 'fields' => $this->fieldRules],
+            'overrides' => $this->overrides(),
             'mapping' => Mapping::fromState((array) ($data['mapping'] ?? [])),
             'update_by' => $updateBy,
             'existing' => $updateBy !== null && in_array($data['existing'] ?? null, ['update', 'skip', 'only'], true) ? $data['existing'] : 'update',
-            'authorize' => $this->authorizeRecords,
+            'authorize' => $this->authorizeRecords ?? Gate::getPolicyFor($definition->model) !== null,
+            'allow_create_related' => $this->allowCreatingRelated,
+            'related_query' => is_string($this->relatedQueryCallback) ? $this->relatedQueryCallback : null,
+            'max_rows' => $this->limitRows(),
             'options' => (array) ($data['options'] ?? []),
             'save_using' => is_string($this->saveUsingCallback) ? $this->saveUsingCallback : null,
             'sheet' => (int) ($meta['sheet'] ?? 0),
@@ -869,6 +1010,7 @@ class XlsxImportAction extends Action
             'guard' => Filament::getAuthGuard(),
             'panel' => Filament::getCurrentPanel()?->getId(),
             'locale' => app()->getLocale(),
+            'tenant' => ($tenant = TenantScope::current()) !== null ? ['class' => $tenant::class, 'key' => $tenant->getKey()] : null,
         ];
     }
 
@@ -880,6 +1022,21 @@ class XlsxImportAction extends Action
 
         if (is_string($this->saveUsingCallback) && $this->saveUsingCallback !== '') {
             $handler = app($this->saveUsingCallback);
+
+            return is_callable($handler) ? $handler(...) : null;
+        }
+
+        return null;
+    }
+
+    private function relatedQueryClosure(): ?Closure
+    {
+        if ($this->relatedQueryCallback instanceof Closure) {
+            return $this->relatedQueryCallback;
+        }
+
+        if (is_string($this->relatedQueryCallback) && $this->relatedQueryCallback !== '') {
+            $handler = app($this->relatedQueryCallback);
 
             return is_callable($handler) ? $handler(...) : null;
         }
@@ -904,7 +1061,7 @@ class XlsxImportAction extends Action
         $definition = $this->definitionFor($this->getLivewire());
         $id = (string) ($data['run_id'] ?? '');
 
-        if (!RunStore::exists($id)) {
+        if (!$this->ownRun($id, $definition)) {
             $this->stop('run_gone');
         }
 
@@ -918,7 +1075,7 @@ class XlsxImportAction extends Action
         }
 
         if ($this->willQueue($rows)) {
-            if ($this->saveUsingCallback instanceof Closure) {
+            if ($this->saveUsingCallback instanceof Closure || $this->relatedQueryCallback instanceof Closure) {
                 $this->stop('closure_not_queueable');
             }
 
@@ -936,7 +1093,24 @@ class XlsxImportAction extends Action
             return;
         }
 
-        $result = ImportRunner::run($spec, false, $this->saveUsingClosure());
+        RunStore::put($id, ['status' => 'running']);
+
+        try {
+            $result = ImportRunner::run(
+                $spec,
+                false,
+                $this->saveUsingClosure(),
+                static fn (int $processed, int $total) => RunStore::put($id, ['progress' => ['processed' => $processed, 'total' => $total]]),
+                $this->relatedQueryClosure(),
+            );
+        } catch (Throwable $e) {
+            report($e);
+            RunStore::put($id, ['status' => 'failed']);
+            ImportNotifier::failed($id)->send();
+
+            return;
+        }
+
         RunStore::put($id, ['status' => 'done', 'result' => $result]);
         RunStore::dropSource($id);
 

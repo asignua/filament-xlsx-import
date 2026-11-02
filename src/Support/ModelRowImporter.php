@@ -14,10 +14,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
@@ -43,7 +41,13 @@ final class ModelRowImporter implements RowImporter
         private readonly ?Authenticatable $user,
         private readonly bool $dryRun,
         private readonly ?Closure $saveUsing = null,
-    ) {}
+        private readonly ?Closure $relatedQuery = null,
+    ) {
+        $this->connections = Connections::names($definition);
+    }
+
+    /** @var list<string> */
+    private array $connections;
 
     public function finish(): void {}
 
@@ -62,7 +66,7 @@ final class ModelRowImporter implements RowImporter
                     return RowOutcome::failed(__('filament-xlsx-import::filament-xlsx-import.row.key_empty', ['field' => $this->definition->target($key)->label ?? $key]));
                 }
 
-                $existing = $this->definition->model::query()->where($key, $value)->first();
+                $existing = TenantScope::scope($this->definition->model::query(), new ($this->definition->model))->where($key, $value)->first();
                 $token = $key.'='.(is_scalar($value) ? (string) $value : json_encode($value));
                 $duplicate = isset($this->seen[$token]);
                 $this->seen[$token] = true;
@@ -81,28 +85,17 @@ final class ModelRowImporter implements RowImporter
 
             $this->validate($attributes, $relations, $existing === null);
 
-            if (($this->spec['authorize'] ?? false) === true && $this->user !== null
-                && !Gate::forUser($this->user)->allows($existing !== null ? 'update' : 'create', $existing ?? $this->definition->model)) {
-                return RowOutcome::failed(__('filament-xlsx-import::filament-xlsx-import.row.unauthorized'));
-            }
-
             $changes = $existing !== null ? $this->diff($existing, $attributes, $relations) : $this->newValues($attributes, $relations);
 
             if ($existing !== null && $changes === []) {
                 return new RowOutcome(RowOutcome::SKIPPED, __('filament-xlsx-import::filament-xlsx-import.row.unchanged'), [], $label, $duplicate);
             }
 
-            DB::transaction(fn () => $this->write($existing, $attributes, $relations, $number));
+            Connections::transaction($this->connections, fn () => $this->write($existing, $attributes, $relations, $number));
 
             return new RowOutcome($existing !== null ? RowOutcome::UPDATED : RowOutcome::CREATED, '', $changes, $label, $duplicate);
-        } catch (RowFailed|CastException $e) {
-            return RowOutcome::failed($e->getMessage());
-        } catch (ValidationException $e) {
-            return RowOutcome::failed(implode(' ', array_merge(...array_values($e->errors()))));
         } catch (Throwable $e) {
-            report($e);
-
-            return RowOutcome::failed(mb_strimwidth($e->getMessage(), 0, 300, '…'));
+            return RowOutcome::failed(RowErrors::message($e));
         }
     }
 
@@ -261,6 +254,9 @@ final class ModelRowImporter implements RowImporter
     private function write(?Model $existing, array $attributes, array $relations, int $number): void
     {
         if ($this->saveUsing !== null) {
+            // The write is not ours here, so the check can only see the stored record (or the class, for a new one).
+            $this->authorize($existing ?? $this->definition->model);
+
             $data = $attributes;
 
             foreach ($relations as $name => $info) {
@@ -287,7 +283,15 @@ final class ModelRowImporter implements RowImporter
             }
         }
 
-        $model->forceFill($attributes)->save();
+        $model->forceFill($attributes);
+
+        if ($existing === null) {
+            TenantScope::assign($model);
+        }
+
+        // After the new values are in the model: a policy that looks at the record sees what is about to be saved.
+        $this->authorize($model);
+        $model->save();
 
         foreach ($relations as $name => $info) {
             $relation = $model->{$name}();
@@ -312,18 +316,59 @@ final class ModelRowImporter implements RowImporter
     }
 
     /**
+     * @param class-string<Model>|Model $subject
+     */
+    private function authorize(Model|string $subject): void
+    {
+        if (($this->spec['authorize'] ?? false) !== true || $this->user === null) {
+            return;
+        }
+
+        $ability = $subject instanceof Model ? ($subject->exists ? 'update' : 'create') : 'create';
+
+        if (!Gate::forUser($this->user)->allows($ability, $subject)) {
+            throw new RowFailed(__('filament-xlsx-import::filament-xlsx-import.row.unauthorized'));
+        }
+    }
+
+    /**
+     * Creating a related record needs the definition's blessing (`mode` is the user's request, not a permission), the
+     * related model's `create` policy for this user — or `->allowCreatingRelated()`.
+     */
+    private function mayCreate(TargetField $target): bool
+    {
+        if (!$target->allowCreate) {
+            return false;
+        }
+
+        if (($this->spec['allow_create_related'] ?? false) === true) {
+            return true;
+        }
+
+        return $this->user !== null && Gate::getPolicyFor($target->relatedModel) !== null && Gate::forUser($this->user)->allows('create', $target->relatedModel);
+    }
+
+    /**
      * @param array{target: TargetField, fields: array<string, mixed>, mode: string, many: string} $info
      */
     private function resolve(array $info): Model
     {
         $class = $info['target']->relatedModel;
-        $found = $class::query()->where($info['fields'])->first();
+        /** @var Model $related */
+        $related = new $class;
+        $query = TenantScope::scope($class::query(), $related);
+
+        if ($this->relatedQuery !== null) {
+            $query = ($this->relatedQuery)($query, $class) ?? $query;
+        }
+
+        $found = $query->where($info['fields'])->first();
 
         if ($found instanceof Model) {
             return $found;
         }
 
-        if ($info['mode'] !== 'create') {
+        if ($info['mode'] !== 'create' || !$this->mayCreate($info['target'])) {
             $pairs = implode(', ', array_map(static fn ($k, $v): string => $k.' = '.(is_scalar($v) ? (string) $v : json_encode($v)), array_keys($info['fields']), $info['fields']));
 
             throw new RowFailed(__('filament-xlsx-import::filament-xlsx-import.row.related_missing', ['relation' => $info['target']->label, 'value' => $pairs]));
@@ -331,7 +376,9 @@ final class ModelRowImporter implements RowImporter
 
         /** @var Model $record */
         $record = new $class;
-        $record->forceFill($info['fields'])->save();
+        $record->forceFill($info['fields']);
+        TenantScope::assign($record);
+        $record->save();
 
         return $record;
     }

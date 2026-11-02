@@ -34,6 +34,7 @@ final class TargetField
         public readonly bool $fromRules = false,
         public readonly string $example = '',
         public readonly bool $mappingRequired = false,
+        public readonly bool $allowCreate = true,
     ) {}
 
     public function isRelation(): bool

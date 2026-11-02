@@ -49,6 +49,8 @@ class Product extends Model implements DefinesImport
     {
         return [
             'update_by' => 'sku',
+            'relations' => ['tags'],
+            'except' => ['team_id', 'category_id'],
             'fields' => [
                 'sku' => ['aliases' => ['article', 'артикул', 'код'], 'casts' => ['trim', 'upper'], 'rules' => ['required', 'max:40'], 'required' => true],
                 'name' => ['aliases' => ['назва', 'product'], 'rules' => ['required']],
@@ -60,5 +62,13 @@ class Product extends Model implements DefinesImport
                 'tags.name' => ['aliases' => ['tags', 'теги'], 'casts' => ['trim', ['type' => 'split', 'arg' => ';']], 'many' => 'add', 'mode' => 'create'],
             ],
         ];
+    }
+
+    /**
+     * @return BelongsTo<Team, $this>
+     */
+    public function team(): BelongsTo
+    {
+        return $this->belongsTo(Team::class);
     }
 }

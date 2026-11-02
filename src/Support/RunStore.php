@@ -125,19 +125,39 @@ final class RunStore
 
     public static function url(string $id, ?string $root = null): string
     {
+        $generator = app('url');
+        // Put back what was there (a worker or a test may have forced its own root): never null it out.
+        [$previousRoot, $previousScheme] = (fn (): array => [$this->forcedRoot, $this->forceScheme])->call($generator);
+
         if ($root !== null && $root !== '') {
-            URL::forceRootUrl($root);
-            URL::forceScheme(parse_url($root, PHP_URL_SCHEME) ?: null);
+            $generator->forceRootUrl($root);
+            $generator->forceScheme(parse_url($root, PHP_URL_SCHEME) ?: null);
         }
 
         try {
             return URL::temporarySignedRoute(self::ROUTE, now()->addHours(self::linkHours()), ['id' => $id]);
         } finally {
             if ($root !== null && $root !== '') {
-                URL::forceRootUrl(null);
-                URL::forceScheme(null);
+                $generator->forceRootUrl($previousRoot);
+                $generator->forceScheme(is_string($previousScheme) ? rtrim($previousScheme, ':/') : null);
             }
         }
+    }
+
+    /**
+     * Whether the run was started by this user in this panel for this import target. A run id comes from the browser
+     * (a hidden form field): it is never trusted to be the caller's own.
+     */
+    public static function ownedBy(string $id, int|string|null $user, ?string $guard, ?string $panel, string $target): bool
+    {
+        $meta = self::meta($id);
+
+        return $meta !== []
+            && $user !== null
+            && (string) ($meta['user'] ?? '') === (string) $user
+            && ($meta['guard'] ?? null) === $guard
+            && ($meta['panel'] ?? null) === $panel
+            && ($meta['target'] ?? null) === $target;
     }
 
     public static function temporaryFile(string $prefix = 'xlsx-import-'): string

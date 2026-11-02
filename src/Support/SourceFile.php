@@ -86,7 +86,8 @@ final class SourceFile
 
                 foreach ($sheet->getRowIterator() as $row) {
                     $number++;
-                    $cells = array_map(self::stringify(...), $row->toArray());
+                    // A hostile or broken sheet can be thousands of columns wide: read one more than the limit, enough to notice.
+                    $cells = array_map(self::stringify(...), array_slice($row->toArray(), 0, self::maxColumns() + 1));
 
                     if (array_filter($cells, static fn (string $cell): bool => trim($cell) !== '') === []) {
                         continue;
@@ -172,7 +173,7 @@ final class SourceFile
      *
      * @return array{headers: list<string>, rows: int, samples: array<string, list<string>>, distinct: array<string, list<string>>}
      */
-    public function scan(int $sheetIndex = 0, int $sampleCount = 3, int $distinctLimit = 40, int $distinctRows = 5_000): array
+    public function scan(int $sheetIndex = 0, int $sampleCount = 3, int $distinctLimit = 40, int $distinctRows = 5_000, ?int $maxRows = null): array
     {
         $headers = [];
         $samples = [];
@@ -190,6 +191,11 @@ final class SourceFile
             }
 
             $count++;
+
+            // Stop reading as soon as the file is known to be too long: it is refused anyway.
+            if ($maxRows !== null && $count > $maxRows) {
+                break;
+            }
 
             foreach ($headers as $position => $header) {
                 $value = trim($cells[$position] ?? '');
@@ -261,6 +267,11 @@ final class SourceFile
         $options->FIELD_DELIMITER = $delimiter;
 
         return $options;
+    }
+
+    public static function maxColumns(): int
+    {
+        return max(1, (int) config('filament-xlsx-import.max_columns', 200));
     }
 
     public static function stringify(mixed $value): string

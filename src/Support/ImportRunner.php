@@ -6,7 +6,6 @@ namespace Asignua\FilamentXlsxImport\Support;
 
 use Closure;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
@@ -18,13 +17,14 @@ use Throwable;
 final class ImportRunner
 {
     /**
-     * @param array<string, mixed>                                                                           $spec
-     * @param Closure(array<string, mixed>, ?\Illuminate\Database\Eloquent\Model, ImportContext): mixed|null $saveUsing
-     * @param Closure(int, int): void|null                                                                   $progress
+     * @param array<string, mixed>                                                                                          $spec
+     * @param Closure(array<string, mixed>, ?\Illuminate\Database\Eloquent\Model, ImportContext): mixed|null                $saveUsing
+     * @param Closure(int, int): void|null                                                                                  $progress
+     * @param Closure(\Illuminate\Database\Eloquent\Builder<\Illuminate\Database\Eloquent\Model>, class-string): mixed|null $relatedQuery
      *
      * @return array<string, mixed>
      */
-    public static function run(array $spec, bool $dry, ?Closure $saveUsing = null, ?Closure $progress = null): array
+    public static function run(array $spec, bool $dry, ?Closure $saveUsing = null, ?Closure $progress = null, ?Closure $relatedQuery = null): array
     {
         $id = (string) $spec['run_id'];
         $meta = RunStore::meta($id);
@@ -43,7 +43,7 @@ final class ImportRunner
         $user = Auth::user();
         $engine = $definition->importer !== null
             ? new ImporterRowImporter($importerClass, $mapping, (array) ($spec['options'] ?? []), $spec, $user, (string) ($meta['file_name'] ?? 'import'))
-            : new ModelRowImporter($definition, $mapping, $spec, $user, $dry, $saveUsing);
+            : new ModelRowImporter($definition, $mapping, $spec, $user, $dry, $saveUsing, $relatedQuery);
 
         $headers = array_values(array_map('strval', (array) ($meta['headers'] ?? [])));
         $report = RunStore::path($id, 'report.xlsx');
@@ -57,11 +57,15 @@ final class ImportRunner
         $result = ['created' => 0, 'updated' => 0, 'skipped' => 0, 'failed' => 0, 'processed' => 0, 'total' => $total, 'truncated' => false, 'duplicates' => 0,
             'samples' => ['created' => [], 'updated' => [], 'errors' => [], 'skipped' => []], 'has_report' => false];
 
-        DB::beginTransaction();
+        $connections = Connections::names($definition);
+        $base = Connections::levels($connections);
+        $expected = array_map(static fn (int $level): int => $level + 1, $base);
+        $maxRows = is_numeric($spec['max_rows'] ?? null) ? (int) $spec['max_rows'] : 0;
+        Connections::begin($connections);
 
         try {
             foreach (RunStore::source($id)->table((int) ($meta['sheet'] ?? 0)) as $number => $row) {
-                if ($limit > 0 && $result['processed'] >= $limit) {
+                if (($limit > 0 && $result['processed'] >= $limit) || (!$dry && $maxRows > 0 && $result['processed'] >= $maxRows)) {
                     $result['truncated'] = true;
 
                     break;
@@ -77,16 +81,25 @@ final class ImportRunner
                     $failures->add($number, $row, $outcome->message);
                 }
 
+                // Something committed behind our back (DDL, TRUNCATE on MySQL, a hook calling commit()): the rehearsal wrote for real.
+                if ($dry && Connections::levels($connections) !== $expected) {
+                    throw new DryRunAborted;
+                }
+
                 if (!$dry && $result['processed'] % $chunk === 0) {
-                    DB::commit();
+                    Connections::commit($connections);
                     $progress?->__invoke($result['processed'], $total);
-                    DB::beginTransaction();
+                    Connections::begin($connections);
                 }
             }
 
-            $dry ? DB::rollBack() : DB::commit();
+            if ($dry) {
+                Connections::rollBackTo($base);
+            } else {
+                Connections::commit($connections);
+            }
         } catch (Throwable $e) {
-            DB::rollBack();
+            Connections::rollBackTo($base);
 
             throw $e;
         } finally {

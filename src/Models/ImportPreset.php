@@ -15,6 +15,9 @@ use Illuminate\Database\Eloquent\Model;
  * @property string                    $target
  * @property string                    $name
  * @property string|null               $user_id
+ * @property string|null               $guard
+ * @property string|null               $panel
+ * @property string|null               $tenant
  * @property bool                      $shared
  * @property list<array<string, mixed>> $mapping
  * @property array<string, mixed>|null $options
@@ -34,12 +37,19 @@ class ImportPreset extends Model
     }
 
     /**
-     * @param Builder<ImportPreset> $query
+     * Presets of this import target the user may use: their own, and the shared ones — within the same guard, panel and tenant.
+     *
+     * @param Builder<ImportPreset>                                              $query
+     * @param array{guard: string|null, panel: string|null, tenant: string|null} $context
      *
      * @return Builder<ImportPreset>
      */
-    public function scopeVisibleTo(Builder $query, string $target, int|string|null $userId): Builder
+    public function scopeVisibleTo(Builder $query, string $target, int|string|null $userId, array $context): Builder
     {
+        foreach ($context as $column => $value) {
+            $value === null ? $query->whereNull($column) : $query->where($column, $value);
+        }
+
         return $query->where('target', $target)->where(function (Builder $q) use ($userId): void {
             $q->where('shared', true);
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Asignua\FilamentXlsxImport\Support;
 
 use Asignua\FilamentXlsxImport\Models\ImportPreset;
+use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
@@ -39,7 +40,7 @@ final class Presets
 
         $options = [];
 
-        foreach (ImportPreset::query()->visibleTo($target, $userId)->orderBy('name')->get() as $preset) {
+        foreach (ImportPreset::query()->visibleTo($target, $userId, self::context())->orderBy('name')->get() as $preset) {
             $options[$preset->getKey()] = $preset->name.($preset->shared ? ' ('.__('filament-xlsx-import::filament-xlsx-import.preset_shared_tag').')' : '');
         }
 
@@ -48,7 +49,24 @@ final class Presets
 
     public static function find(int|string $id, string $target, int|string|null $userId): ?ImportPreset
     {
-        return self::enabled() ? ImportPreset::query()->visibleTo($target, $userId)->whereKey($id)->first() : null;
+        return self::enabled() ? ImportPreset::query()->visibleTo($target, $userId, self::context())->whereKey($id)->first() : null;
+    }
+
+    /**
+     * Where a preset lives: the guard, the panel and (with tenancy) the tenant — a preset saved in one panel or tenant
+     * is not offered, nor shared, in another.
+     *
+     * @return array{guard: string|null, panel: string|null, tenant: string|null}
+     */
+    public static function context(): array
+    {
+        $tenant = TenantScope::current();
+
+        return [
+            'guard' => Filament::getAuthGuard(),
+            'panel' => Filament::getCurrentPanel()?->getId(),
+            'tenant' => $tenant !== null ? $tenant::class.':'.$tenant->getKey() : null,
+        ];
     }
 
     public static function canShare(): bool
@@ -72,9 +90,16 @@ final class Presets
             return null;
         }
 
-        $preset = ImportPreset::query()->where('target', $target)->where('name', $name)->where('user_id', $userId === null ? null : (string) $userId)->first() ?? new ImportPreset;
+        $context = self::context();
+        $query = ImportPreset::query()->where('target', $target)->where('name', $name)->where('user_id', $userId === null ? null : (string) $userId);
 
-        $preset->forceFill([
+        foreach ($context as $column => $value) {
+            $value === null ? $query->whereNull($column) : $query->where($column, $value);
+        }
+
+        $preset = $query->first() ?? new ImportPreset;
+
+        $preset->forceFill($context + [
             'target' => $target,
             'name' => $name,
             'user_id' => $userId === null ? null : (string) $userId,

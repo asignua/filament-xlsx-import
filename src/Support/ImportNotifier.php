@@ -44,12 +44,19 @@ final class ImportNotifier
         return $notification;
     }
 
-    public static function failed(): Notification
+    /**
+     * The run stopped on an error. Chunks committed before it stay in the database: say how many rows that is and what to do about it.
+     */
+    public static function failed(?string $id = null): Notification
     {
+        $committed = $id !== null ? (int) ((RunStore::meta($id)['progress']['processed'] ?? 0)) : 0;
+
         return Notification::make()
             ->danger()
             ->title(__('filament-xlsx-import::filament-xlsx-import.failed_title'))
-            ->body(__('filament-xlsx-import::filament-xlsx-import.failed_body'));
+            ->body($committed > 0
+                ? __('filament-xlsx-import::filament-xlsx-import.failed_body_partial', ['count' => number_format($committed)])
+                : __('filament-xlsx-import::filament-xlsx-import.failed_body'));
     }
 
     /**

@@ -158,15 +158,15 @@ class RulesAndPresetsTest extends TestCase
     {
         $other = User::factory()->create();
         $mine = new ImportPreset;
-        $mine->forceFill(['target' => Product::class, 'name' => 'Private', 'user_id' => (string) auth()->id(), 'shared' => false, 'mapping' => []])->save();
+        $mine->forceFill(\Asignua\FilamentXlsxImport\Support\Presets::context() + ['target' => Product::class, 'name' => 'Private', 'user_id' => (string) auth()->id(), 'shared' => false, 'mapping' => []])->save();
         $theirs = new ImportPreset;
-        $theirs->forceFill(['target' => Product::class, 'name' => 'Theirs', 'user_id' => (string) $other->id, 'shared' => false, 'mapping' => []])->save();
+        $theirs->forceFill(\Asignua\FilamentXlsxImport\Support\Presets::context() + ['target' => Product::class, 'name' => 'Theirs', 'user_id' => (string) $other->id, 'shared' => false, 'mapping' => []])->save();
         $shared = new ImportPreset;
-        $shared->forceFill(['target' => Product::class, 'name' => 'Team', 'user_id' => (string) $other->id, 'shared' => true, 'mapping' => []])->save();
+        $shared->forceFill(\Asignua\FilamentXlsxImport\Support\Presets::context() + ['target' => Product::class, 'name' => 'Team', 'user_id' => (string) $other->id, 'shared' => true, 'mapping' => []])->save();
         $elsewhere = new ImportPreset;
-        $elsewhere->forceFill(['target' => Contact::class, 'name' => 'Other model', 'user_id' => (string) auth()->id(), 'shared' => true, 'mapping' => []])->save();
+        $elsewhere->forceFill(\Asignua\FilamentXlsxImport\Support\Presets::context() + ['target' => Contact::class, 'name' => 'Other model', 'user_id' => (string) auth()->id(), 'shared' => true, 'mapping' => []])->save();
 
-        $visible = ImportPreset::query()->visibleTo(Product::class, auth()->id())->orderBy('name')->pluck('name')->all();
+        $visible = ImportPreset::query()->visibleTo(Product::class, auth()->id(), \Asignua\FilamentXlsxImport\Support\Presets::context())->orderBy('name')->pluck('name')->all();
 
         $this->assertSame(['Private', 'Team'], $visible);
 
@@ -187,7 +187,7 @@ class RulesAndPresetsTest extends TestCase
     {
         $other = User::factory()->create();
         $theirs = new ImportPreset;
-        $theirs->forceFill(['target' => Product::class, 'name' => 'Theirs', 'user_id' => (string) $other->id, 'shared' => false, 'mapping' => [['header' => 'Назва', 'target' => 'notes', 'casts' => [], 'mode' => 'lookup', 'many' => 'add']]])->save();
+        $theirs->forceFill(\Asignua\FilamentXlsxImport\Support\Presets::context() + ['target' => Product::class, 'name' => 'Theirs', 'user_id' => (string) $other->id, 'shared' => false, 'mapping' => [['header' => 'Назва', 'target' => 'notes', 'casts' => [], 'mode' => 'lookup', 'many' => 'add']]])->save();
 
         $page = $this->upload($this->products(), Sheet::xlsx([['Артикул', 'Назва'], ['A', 'Alpha']]), ['preset_id' => $theirs->id]);
 

@@ -9,10 +9,8 @@ use Filament\Actions\Imports\Importer;
 use Filament\Actions\Imports\Models\Import;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
@@ -123,16 +121,10 @@ final class ImporterRowImporter implements RowImporter
         self::$capture = ['importer' => $this->importer, 'exists' => false, 'dirty' => [], 'saved' => false, 'authorize' => ($this->spec['authorize'] ?? false) === true, 'user' => $this->user];
 
         try {
-            DB::transaction(fn () => ($this->importer)($row));
+            Connections::transaction([Connections::of($this->importerClass::getModel())], fn () => ($this->importer)($row));
             $capture = self::captured();
-        } catch (RowImportFailedException $e) {
-            return RowOutcome::failed($e->getMessage());
-        } catch (ValidationException $e) {
-            return RowOutcome::failed(implode(' ', array_merge(...array_values($e->errors()))));
         } catch (Throwable $e) {
-            report($e);
-
-            return RowOutcome::failed(mb_strimwidth($e->getMessage(), 0, 300, '…'));
+            return RowOutcome::failed(RowErrors::message($e));
         } finally {
             self::$capture = null;
         }

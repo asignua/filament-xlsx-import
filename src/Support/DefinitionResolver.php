@@ -31,10 +31,7 @@ final class DefinitionResolver
             }
 
             $model = $importer::getModel();
-            $targets = self::fromImporter($importer);
-        } elseif ($model !== null && is_subclass_of($model, Model::class)) {
-            $targets = ModelIntrospector::targets($model);
-        } else {
+        } elseif ($model === null || !is_subclass_of($model, Model::class)) {
             throw new LogicException('XlsxImportAction needs ->model(Model::class) or ->importer(Importer::class).');
         }
 
@@ -48,15 +45,32 @@ final class DefinitionResolver
             $rules = $source::importRules();
         }
 
+        $scope = [
+            'only' => self::list($overrides['only'] ?? $rules['targets'] ?? null),
+            'except' => self::list($overrides['except'] ?? $rules['except'] ?? null) ?? [],
+            'relations' => self::list($overrides['relations'] ?? $rules['relations'] ?? null) ?? [],
+        ];
+
+        $targets = $importer !== null ? self::fromImporter($importer) : ModelIntrospector::targets($model, $scope);
+
         $rules = [
             'update_by' => $overrides['update_by'] ?? $rules['update_by'] ?? null,
             'fields' => array_replace_recursive($rules['fields'] ?? [], (array) ($overrides['fields'] ?? [])),
         ];
 
         $targets = self::overlay($targets, $rules['fields']);
-        $updateBy = is_string($rules['update_by']) && isset($targets[$rules['update_by']]) ? $rules['update_by'] : null;
+        // The key must be something the file may write to, never a hidden way to reach the primary key or a secret.
+        $updateBy = is_string($rules['update_by']) && isset($targets[$rules['update_by']]) && !$targets[$rules['update_by']]->isRelation() ? $rules['update_by'] : null;
 
         return new Definition($model, $importer, $targets, $updateBy, $source !== null || $rules['fields'] !== []);
+    }
+
+    /**
+     * @return list<string>|null
+     */
+    private static function list(mixed $value): ?array
+    {
+        return is_array($value) ? array_values(array_map('strval', $value)) : null;
     }
 
     /**
@@ -85,6 +99,8 @@ final class DefinitionResolver
                 'rules' => array_key_exists('rules', $rule) ? array_values((array) $rule['rules']) : $target->rules,
                 'required' => (bool) ($rule['required'] ?? $target->required),
                 'mode' => in_array($rule['mode'] ?? null, ['lookup', 'create'], true) ? $rule['mode'] : $target->mode,
+                // A rule that says `'mode' => 'lookup'` locks the relation to «find only» (the user cannot switch it to create) unless it also says `'allow_create' => true`.
+                'allowCreate' => (bool) ($rule['allow_create'] ?? (($rule['mode'] ?? null) !== 'lookup')),
                 'many' => in_array($rule['many'] ?? null, ['add', 'replace'], true) ? $rule['many'] : $target->many,
                 'fromRules' => true,
                 'mappingRequired' => (bool) ($rule['required'] ?? false),

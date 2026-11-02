@@ -19,6 +19,6 @@ class ListProducts extends ListRecords
         }
 
         // Zero config: the model carries its own rules (Product::importRules()).
-        return [XlsxImportAction::make()->model(\Workbench\App\Models\Product::class)->queueWhenMoreThan(500)];
+        return [XlsxImportAction::make()->model(\Workbench\App\Models\Product::class)->allowCreatingRelated()->queueWhenMoreThan(500)];
     }
 }

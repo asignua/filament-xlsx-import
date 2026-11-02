@@ -8,6 +8,7 @@ use Closure;
 use Filament\Facades\Filament;
 use Filament\Models\Contracts\FilamentUser;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Throwable;
 
@@ -18,25 +19,34 @@ use Throwable;
  */
 final class RunContext
 {
+    private static bool $beforeRan = false;
+
     /**
      * @param array<string, mixed>                 $spec
      * @param Closure(Authenticatable|null): mixed $callback
      */
     public static function within(array $spec, Closure $callback): mixed
     {
+        self::$beforeRan = false;
         $guardName = is_string($spec['guard'] ?? null) ? $spec['guard'] : Auth::getDefaultDriver();
         $previousLocale = app()->getLocale();
         $previousDefault = Auth::getDefaultDriver();
         $previousPanel = Filament::getCurrentPanel();
+        $previousTenant = self::tenant();
         $driver = Auth::guard($guardName);
         $previousUser = $driver->hasUser() ? $driver->user() : null;
 
         try {
             return $callback(self::actAs($spec, $guardName));
         } finally {
+            if (self::$beforeRan) {
+                self::after($spec);
+            }
+
             app()->setLocale($previousLocale);
             Auth::shouldUse($previousDefault);
             Filament::setCurrentPanel($previousPanel);
+            self::restoreTenant($previousTenant);
 
             if ($previousUser !== null) {
                 $driver->setUser($previousUser);
@@ -71,6 +81,7 @@ final class RunContext
 
             Filament::setCurrentPanel($panel);
             Filament::bootCurrentPanel();
+            self::restoreTenant(self::resolveTenant($spec));
         }
 
         $id = $spec['user'] ?? null;
@@ -92,9 +103,77 @@ final class RunContext
         $before = config('filament-xlsx-import.queue.before');
 
         if (is_callable($before)) {
+            self::$beforeRan = true;
             $before($user, $panel);
         }
 
         return $user;
+    }
+
+    /**
+     * `queue.after`: the undo of `queue.before` (whatever it set up in the worker), run even when the job failed.
+     *
+     * @param array<string, mixed> $spec
+     */
+    private static function after(array $spec): void
+    {
+        $after = config('filament-xlsx-import.queue.after');
+        $id = $spec['user'] ?? null;
+
+        if (!is_callable($after) || $id === null) {
+            return;
+        }
+
+        $guard = is_string($spec['guard'] ?? null) ? $spec['guard'] : Auth::getDefaultDriver();
+        $driver = Auth::guard($guard);
+        $provider = method_exists($driver, 'getProvider') ? $driver->getProvider() : null;
+        $user = $provider?->retrieveById($id);
+        $panelId = $spec['panel'] ?? null;
+
+        try {
+            $panel = is_string($panelId) ? Filament::getPanel($panelId) : null;
+        } catch (Throwable) {
+            $panel = null;
+        }
+
+        if ($user instanceof Authenticatable) {
+            $after($user, $panel);
+        }
+    }
+
+    private static function tenant(): ?Model
+    {
+        try {
+            return Filament::hasTenancy() ? Filament::getTenant() : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    private static function restoreTenant(?Model $tenant): void
+    {
+        try {
+            if (Filament::hasTenancy()) {
+                Filament::setTenant($tenant, true);
+            }
+        } catch (Throwable) {
+            // The panel has no tenancy (any more): nothing to restore.
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $spec
+     */
+    private static function resolveTenant(array $spec): ?Model
+    {
+        $tenant = $spec['tenant'] ?? null;
+
+        if (!is_array($tenant) || !is_string($tenant['class'] ?? null) || !is_subclass_of($tenant['class'], Model::class)) {
+            return null;
+        }
+
+        $found = $tenant['class']::query()->find($tenant['key'] ?? null);
+
+        return $found instanceof Model ? $found : null;
     }
 }

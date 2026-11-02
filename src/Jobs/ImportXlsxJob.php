@@ -61,6 +61,7 @@ final class ImportXlsxJob implements ShouldQueue
                     false,
                     $this->saveUsing(),
                     static fn (int $processed, int $total) => RunStore::put($id, ['progress' => ['processed' => $processed, 'total' => $total]]),
+                    $this->relatedQuery(),
                 );
 
                 RunStore::put($id, ['status' => 'done', 'result' => $result]);
@@ -82,9 +83,22 @@ final class ImportXlsxJob implements ShouldQueue
 
         RunContext::within($this->spec, function (?Authenticatable $user) use ($id): void {
             if ($user !== null) {
-                ImportNotifier::toDatabase(ImportNotifier::failed(), $user, "import {$id} failed");
+                ImportNotifier::toDatabase(ImportNotifier::failed($id), $user, "import {$id} failed");
             }
         });
+    }
+
+    private function relatedQuery(): ?Closure
+    {
+        $callable = $this->spec['related_query'] ?? null;
+
+        if (!is_string($callable) || $callable === '') {
+            return null;
+        }
+
+        $handler = app($callable);
+
+        return is_callable($handler) ? $handler(...) : null;
     }
 
     private function saveUsing(): ?Closure

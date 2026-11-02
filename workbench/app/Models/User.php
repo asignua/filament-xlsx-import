@@ -7,6 +7,7 @@ namespace Workbench\App\Models;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Workbench\Database\Factories\UserFactory;
@@ -39,6 +40,14 @@ class User extends Authenticatable implements FilamentUser
     public function canAccessPanel(Panel $panel): bool
     {
         return $this->is_active && !static::$denyPanel;
+    }
+
+    /**
+     * @return BelongsToMany<Role, $this>
+     */
+    public function roles(): BelongsToMany
+    {
+        return $this->belongsToMany(Role::class);
     }
 
     protected static function newFactory(): UserFactory
