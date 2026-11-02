@@ -18,6 +18,9 @@ use ReflectionClass;
 
 final class DefinitionResolver
 {
+    /** @var array<class-string, true> */
+    private static array $warned = [];
+
     /**
      * @param class-string<Model>|null $model
      * @param class-string|null        $importer
@@ -68,7 +71,12 @@ final class DefinitionResolver
         if ($importer === null && array_filter($targets, static fn (TargetField $t): bool => !$t->isRelation()) === []) {
             // The developer declared nothing a file may write to (a fully guarded model): say so, to the developer, not guess.
             $notice = (string) __('filament-xlsx-import::filament-xlsx-import.notice_no_targets', ['model' => class_basename($model)]);
-            Log::warning("filament-xlsx-import: no import targets for [{$model}]: the model is fully guarded. Declare ->only([...]) or 'targets' in DefinesImport::importRules().");
+
+            // Once per class and process: the definition is resolved on every render and every Livewire request.
+            if (!isset(self::$warned[$model])) {
+                self::$warned[$model] = true;
+                Log::warning("filament-xlsx-import: no import targets for [{$model}]: the model is fully guarded. Declare ->only([...]) or 'targets' in DefinesImport::importRules().");
+            }
         }
 
         return new Definition($model, $importer, $targets, $updateBy, $source !== null || $rules['fields'] !== [], $notice);

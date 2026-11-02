@@ -473,13 +473,13 @@ E-1,attacker@example.com
         $this->assertSame('admin@example.com', $admin->fresh()->email);
     }
 
-    public function test_a_has_one_into_a_model_without_a_policy_is_refused_unless_writing_related_is_allowed(): void
+    public function test_a_has_one_into_a_model_without_a_policy_is_refused_unless_the_dangerous_switch_is_on(): void
     {
         $user = User::factory()->create(['email' => 'u@example.com']);
         $employee = new Employee;
         $employee->forceFill(['name' => 'Eve', 'code' => 'E-1'])->save();
         $user->forceFill(['employee_id' => $employee->id])->save();
-        $make = fn (bool $allow) => XlsxImportAction::make()->model(Employee::class)->only(['code', 'account.email'])->relations(['account'])->updateBy('code')->authorizeRecords(false)->allowCreatingRelated($allow);
+        $make = fn (bool $allow) => XlsxImportAction::make()->model(Employee::class)->only(['code', 'account.email'])->relations(['account'])->updateBy('code')->authorizeRecords(false)->allowUpdatingRelatedWithoutPolicy($allow);
 
         $this->contactsAction($make(false));
         $page = $this->upload($this->contacts(), Sheet::csv('code,account email

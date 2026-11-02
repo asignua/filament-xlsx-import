@@ -6,9 +6,9 @@ All notable changes to `asignua/filament-xlsx-import` are documented here.
 
 First release.
 
-- `XlsxImportAction` (page header and table header action): upload → columns → dry run → import, for any model with no configuration, or through an existing Filament `Importer`.
+- `XlsxImportAction` (page header, table header and relation-manager action): upload → columns → dry run → import, for a model that declares what a file may write to (`$fillable`, `$guarded = []`, `->only()` / `targets`), or through an existing Filament `Importer`.
 - `.xlsx`, `.ods` and `.csv` (BOM, UTF-16/32, Windows-1251/1252 detected, delimiter sniffed, `->csvEncoding()`), sheet picker.
-- Mapping step driven by the file: its columns with sample values; targets from database columns, `$casts` and `belongsTo` / `hasOne` / `belongsToMany` relations; automatic header matching (names, labels, aliases, built-in en/uk/de/pl/fr/es synonyms, near misses).
+- Mapping step driven by the file: its columns with sample values; targets from the model's declaration (`$fillable` / guarded), `$casts` and its `belongsTo` / `hasOne` relations (`belongsToMany` only when named); automatic header matching (names, labels, aliases, built-in en/uk/de/pl/fr/es synonyms, near misses).
 - Casts per column, chained: trim, case, integer, decimal (`,` / `.`), boolean (so/ni, yes/no…), date and datetime with a source format, enum value tables, JSON, split, default, regex.
 - `DefinesImport` model rules (aliases, casts, validation, upsert key, relation modes) shown pre-filled and marked «from model rules»; per-run overrides with «Reset to model rule».
 - Saved presets (own or shared through a gate), matched by header; publishable migration.
@@ -34,3 +34,12 @@ Second review round (before the first tag):
 - Casts see the cell's own type: a number cell is never read with a thousands rule (12.5 stayed 12.5, not 125), text decimals are declared (decimal + thousands separator) or refused when ambiguous, real date cells and ISO/Excel-serial dates are taken before the text format, blanks skip field rules, the template examples follow the rules.
 - Mapping screen: «from model rules» and reset for whatever target is chosen, enum value table as a select of the cases with labels, date format picker, live «sample → result» line, «create» offered only when allowed (with the reason), «Auto» for CSV encoding/delimiter and the detected values shown, «show only unmapped columns» and a sticky list of the required fields still unmapped.
 - README: fair comparison with eightynine/filament-excel-import and a migration table of its API.
+
+Final review round (before the first tag):
+
+- Secret and privilege names are recognised in any spelling (`PASSWORD`, `IS_ADMIN`, `is-admin`, `apiToken`); every belongsTo foreign key, `*_id` / `*_uuid` / `*_ulid` column and JSON-cast column is left out of the raw attribute targets.
+- `->allowCreatingRelated()` only concerns creating: an existing related record (a `hasOne` account) always needs the related model's `update` policy; `->allowUpdatingRelatedWithoutPolicy()` is the explicit, dangerous opt-out.
+- Value tables: distinct values are deduplicated ignoring case and an empty row never cancels a filled one; the enum class survives presets and the browser; the sticky «still to map» summary sticks and lists each field once; a wrong decimal separator is named in the message.
+- A model with nothing to offer hides the button (a developer error with `app.debug`), logged once per class.
+- Relation managers: records are created/looked up/attached through the owner's relationship (hasMany, hasOne, morphMany, belongsToMany), the owner's key is never a target.
+- `->fixedAttributes()`: server-side values merged into every row.

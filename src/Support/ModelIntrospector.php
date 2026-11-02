@@ -49,6 +49,13 @@ final class ModelIntrospector
         $relationAllowlist = $scope['relations'] ?? [];
         $targets = [];
         $casts = $model->getCasts();
+        $foreignKeys = [];
+
+        foreach (self::relations($model) as [$kind, , $foreignKey]) {
+            if ($kind === 'belongsTo' && $foreignKey !== null) {
+                $foreignKeys[] = $foreignKey;
+            }
+        }
 
         foreach (self::columns($model) as $column) {
             $name = $column['name'];
@@ -59,7 +66,7 @@ final class ModelIntrospector
             $suggested = CastPipeline::suggest($cast, $type);
 
             // «json» may come from the cast only (SQLite stores json as text): the cast counts.
-            if (!self::attributeAllowed($model, $name, $only, $except, self::kindOf($suggested, $type))) {
+            if (!self::attributeAllowed($model, $name, $only, $except, self::kindOf($suggested, $type), $foreignKeys)) {
                 continue;
             }
 
@@ -125,8 +132,9 @@ final class ModelIntrospector
      *
      * @param list<string>|null $only
      * @param list<string>      $except
+     * @param list<string>      $foreignKeys columns that are the foreign key of one of the model's belongsTo relations
      */
-    private static function attributeAllowed(Model $model, string $name, ?array $only, array $except, string $kind = 'string'): bool
+    private static function attributeAllowed(Model $model, string $name, ?array $only, array $except, string $kind = 'string', array $foreignKeys = []): bool
     {
         if (in_array($name, $except, true)) {
             return false;
@@ -142,7 +150,8 @@ final class ModelIntrospector
         }
 
         // Structured data and foreign keys are reached through the relation lookup, not as raw attributes.
-        if ($kind === 'json' || ($kind === 'integer' && str_ends_with($name, '_id'))) {
+        // Whatever its type: an integer, a ULID or a UUID string, a column called boss_ref that a belongsTo points at.
+        if ($kind === 'json' || in_array($name, $foreignKeys, true) || preg_match('/_(id|uuid|ulid)$/i', $name) === 1) {
             return false;
         }
 
@@ -202,10 +211,22 @@ final class ModelIntrospector
 
     public static function sensitiveName(string $name): bool
     {
-        // camelCase attributes (apiToken, isAdmin) are read as their snake_case form.
-        $name = Str::snake($name);
+        // Hyphens and spaces read as underscores; the name is tested as it is, lower-cased, and — only when it has lower-case
+        // letters, i.e. is camelCase (apiToken) — in its snake_case form (Str::snake('PASSWORD') is «p_a_s_s_w_o_r_d»: useless).
+        $normal = str_replace(['-', ' '], '_', trim($name));
+        $candidates = [mb_strtolower($normal)];
 
-        return (bool) preg_match('/password|passwd|^secret$|_secret$|^token$|_token$|^api_key$|^two_factor|^otp|^remember_token$|^(is_)?(super_?)?admin$|^is_(staff|root|owner)$|^roles?(_id)?$|^permissions?$/i', $name);
+        if (preg_match('/[a-z]/', $normal) === 1) {
+            $candidates[] = Str::snake($normal);
+        }
+
+        foreach ($candidates as $candidate) {
+            if (preg_match('/password|passwd|^secret$|_secret$|^token$|_token$|^api_key$|^two_factor|^otp|^remember_token$|^(is_)?(super_?)?admin$|^is_(staff|root|owner)$|^roles?(_id|_uuid|_ulid)?$|^permissions?$/', $candidate) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -282,7 +303,7 @@ final class ModelIntrospector
     }
 
     /**
-     * @return array<string, array{0: string, 1: Model}>
+     * @return array<string, array{0: string, 1: Model, 2: string|null}>
      */
     private static function relations(Model $model): array
     {
@@ -315,7 +336,7 @@ final class ModelIntrospector
                 $relation = $method->invoke($model);
 
                 if ($relation instanceof Relation) {
-                    $found[$method->getName()] = [$kind, $relation->getRelated()];
+                    $found[$method->getName()] = [$kind, $relation->getRelated(), $relation instanceof BelongsTo ? $relation->getForeignKeyName() : null];
                 }
             } catch (Throwable) {
                 continue;

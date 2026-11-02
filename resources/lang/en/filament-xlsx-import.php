@@ -193,6 +193,7 @@ return [
     ],
     'cast' => [
         'not_integer' => '":value" is not a whole number.',
+        'wrong_decimal_separator' => 'The declared decimal separator is ":separator", but ":value" uses the other one.',
         'ambiguous_decimal' => '":value" could be a thousands mark or a decimal point — declare the separators in the rule.',
         'not_decimal' => '":value" is not a number.',
         'not_boolean' => '":value" is not yes/no (check the true/false words).',
@@ -202,6 +203,8 @@ return [
         'bad_pattern' => 'The regular expression is invalid.',
     ],
     'row' => [
+        'attached' => 'Attached',
+        'fixed_unknown' => '«:key» is not a field this import knows (fixedAttributes).',
         'related_unauthorized' => 'You may not change :relation.',
         'duplicate_in' => 'Duplicate value in :column.',
         'duplicate' => 'Duplicate value.',

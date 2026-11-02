@@ -34,6 +34,8 @@ successor of `eightynine/filament-excel-import` (Filament 4 only, [issue #63](ht
 - [Model rules](#model-rules)
 - [Casts](#casts)
 - [Related records](#related-records)
+- [Relation managers](#relation-managers)
+- [Fixed values](#fixed-values-for-every-row)
 - [Upsert](#upsert-by-key)
 - [Dry run](#dry-run)
 - [Queue](#queue)
@@ -88,12 +90,14 @@ use Asignua\FilamentXlsxImport\Actions\XlsxImportAction;
 protected function getHeaderActions(): array   // a ListRecords page; also works in a table's headerActions()
 {
     return [
-        XlsxImportAction::make(),                    // the page's model
-        // XlsxImportAction::make()->model(Product::class),
-        // XlsxImportAction::make()->importer(ProductImporter::class),   // an existing Filament Importer
+        XlsxImportAction::make()->only(['sku', 'name', 'price'])->updateBy('sku'),   // the page's model, an explicit allowlist
+        // XlsxImportAction::make()->model(Product::class),                           // a model that declares $fillable / $guarded = []
+        // XlsxImportAction::make()->importer(ProductImporter::class),                // an existing Filament Importer
     ];
 }
 ```
+
+**The model must say what a file may write to.** With `$fillable` (that list) or `$guarded = []` (every column that is not a key or a secret — Laravel's semantics) the action works with no more configuration. A *fully guarded* model (`$guarded = ['*']`, or neither property) has nothing to offer: the button is **not shown** (and with `app.debug` on the page throws a message that tells the developer to add `->only([...])` / `'targets'`). For account, privilege and billing-like models always pass `->only()` even when the model is unguarded.
 
 The modal has three steps: **File** (upload, sheet, CSV encoding/delimiter, a saved preset, «Download a blank template»),
 **Columns** (the mapping) and **Preview** (the dry run, then «Import»).
@@ -121,7 +125,7 @@ XlsxImportAction::make()->model(Product::class)->except(['cost_price'])->relatio
 
 `only()` may list the primary key or a secret: that is then your decision. **For user-like, role-like and billing-like models always list the targets explicitly** — flags such as `is_active`, `level`, `plan` cannot be recognised by name.
 
-**Authorization.** `->authorizeRecords()` checks the model policy for every row — `update` *after* the new values are in the model and before it is saved. It is **on by default when a policy is registered for the model** (`->authorizeRecords(false)` switches it off); without a policy rows are not checked, as in Filament's own importer. **Writing into a related record** (`hasOne`) is a write to that model: its `update` policy for an existing record, its `create` policy for a new one — without a policy it is refused unless you call `->allowCreatingRelated()`.
+**Authorization.** `->authorizeRecords()` checks the model policy for every row — `update` *after* the new values are in the model and before it is saved. It is **on by default when a policy is registered for the model** (`->authorizeRecords(false)` switches it off); without a policy rows are not checked, as in Filament's own importer. **Writing into a related record** (`hasOne`) is a write to that model: its `update` policy for an existing record, its `create` policy for a new one — without a policy it is refused. `->allowCreatingRelated()` is about **creating only** and never waives the `update` check; the dangerous, separately named `->allowUpdatingRelatedWithoutPolicy()` does.
 
 **Related records.** «Create it» is a request, not a permission: a rule with `'mode' => 'lookup'` locks the relation (unless it also says `'allow_create' => true`), and creating needs the related model's `create` policy for the user — otherwise the option is not offered (the screen says why) and the server refuses it anyway. Attaching to a parent requires `update` on the parent (the check above).
 
@@ -282,6 +286,38 @@ XlsxImportAction::make()->model(Product::class)->updateBy('sku')->saveUsing(
 You get the cast attributes and, under the relation's name, the related fields; the plugin does not write relations itself then.
 Inside the dry run the call happens too (in the rolled-back transaction): write only through the database connection.
 
+## Relation managers
+
+Put the action in a relation manager's `headerActions()` (or a `ManageRelatedRecords` page): the import then belongs to the **owner record**.
+
+```php
+class ProductsRelationManager extends RelationManager
+{
+    protected static string $relationship = 'products';
+
+    public function table(Table $table): Table
+    {
+        return $table->headerActions([XlsxImportAction::make()->updateBy('sku')->only(['sku', 'name', 'price'])]);
+    }
+}
+```
+
+- `hasMany` / `hasOne` / `morphMany`: new records get the owner's key (and morph type) set by the plugin — **the foreign key is never a target** — and existing records are looked up **among the owner's own** (a record of another owner is never touched).
+- `belongsToMany`: found records are **attached** (`syncWithoutDetaching`), new ones are created and attached; a record that is already attached and unchanged is skipped.
+- The owner travels with a queued import (class, key, relationship name) and the dry run, authorization, tenancy and the failed-rows report work as everywhere else. Other relationship types (`hasManyThrough`…) are not supported.
+
+## Fixed values for every row
+
+```php
+XlsxImportAction::make()->fixedAttributes(fn (ImportContext $ctx): array => [
+    'team_id' => $ctx->user?->team_id,
+    'source' => 'import',
+    'category.name' => 'Imported',          // a relation field the import offers
+]);
+```
+
+Merged into **every** row on the server, not mappable by the user, and stronger than the file (a column mapped to the same attribute is overridden). To run queued, pass an invokable class name instead of a closure.
+
 ## Limits and authorization
 
 `->maxFileSize(5_120)` (KB, also an upload-field rule) and `->maxRows(20_000)`, defaults in the config (`max_columns` caps the width, 200 by default). The row limit is enforced while streaming (the scan stops one row past it) and again by the import. A row error never shows SQL, bindings or file paths: a unique violation reads «Duplicate value in email», any other database or unexpected error is generic and goes to the log; throw `RowFailed` from `saveUsing` to fail a row with your own message. The action is an ordinary Filament action:
@@ -329,10 +365,14 @@ Their API, and what to use here (from their README; verify against the version y
 | `validateUsing([...])` | `'rules'` per field in `importRules()` / `->fieldRules([...])`; validation runs on the cast values and skips blank cells |
 | `mutateBeforeValidationUsing()` / `mutateAfterValidationUsing()` | [casts](#casts) (`trim`, `lower`, `regex`, `default`, `enum` value tables…); anything else → `->saveUsing()` |
 | `beforeImport()` / `afterImport()` | **not supported** as hooks; use model observers, or the hooks of a Filament `Importer` |
-| `additionalData()` / `customImportData()` | `->saveUsing(fn (array $data, ?Model $existing, ImportContext $ctx) => …)` to add values; a constant default per column is the `default` cast |
+| `additionalData()` / `customImportData()` | `->fixedAttributes(fn (ImportContext $ctx): array => [...])` — merged into every row, server-side, not mappable; `->saveUsing()` for a custom write |
 | `beforeUploadField()` / `afterUploadField()` | **not supported** — the upload step is the plugin's |
 | `processCollectionUsing()` | `->saveUsing()` (per row, with the cast row and `ImportContext`) |
 | `sampleExcel()` | built in: «Download a blank template»; `->templateExample(false)` drops the example row |
+| `ExcelImportRelationshipAction` | the same `XlsxImportAction` in a relation manager's `headerActions()` — see [Relation managers](#relation-managers) |
+| `sampleFileExcel(url:)` | **not supported** — the template is generated from the definition (no URL) |
+| `uploadField(fn)` | **not supported** — the upload field is the plugin's (`->maxFileSize()`, `->csvEncoding()` are the knobs) |
+| `validateHeaders` / `ImportStoppedException` | **not supported**: required columns must be mapped before the import can start (`'required' => true` in the rules), and a bad row is skipped and reported instead of stopping the import |
 | `stopImportWith*` | **not supported**: a bad row is skipped and listed in the failed-rows report; `->maxRows()` and `->maxFileSize()` refuse a file up front |
 | `createOnly` / upsert via the import class | `->updateBy('email')`, `->createOnly()`, `->updateOnly()` |
 

@@ -41,9 +41,9 @@ trait DrivesImport
      *
      * @param array<string, mixed> $form
      */
-    protected function upload(Testable $page, UploadedFile $file, array $form = []): Testable
+    protected function upload(Testable $page, UploadedFile $file, array $form = [], mixed $action = 'xlsxImport'): Testable
     {
-        return $page->mountAction('xlsxImport')->fillForm(['file' => $file] + $form)->goToWizardStep(2);
+        return $page->mountAction($action)->fillForm(['file' => $file] + $form)->goToWizardStep(2);
     }
 
     /**

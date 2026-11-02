@@ -233,7 +233,8 @@ final class SourceFile
                     $samples[$header][] = $sample;
                 }
 
-                if ($count <= $distinctRows && !isset($overflow[$header]) && !in_array($value, $distinct[$header], true)) {
+                // Case-insensitive: «Активний» and «активний» are one value of the value table (the cast looks values up that way).
+                if ($count <= $distinctRows && !isset($overflow[$header]) && !in_array(mb_strtolower($value), array_map('mb_strtolower', $distinct[$header]), true)) {
                     $distinct[$header][] = $value;
 
                     if (count($distinct[$header]) > $distinctLimit) {

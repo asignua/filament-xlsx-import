@@ -51,7 +51,7 @@ final class Mapping
                 $target = $saved['target'] ?? null;
                 $entry = [
                     'target' => $target,
-                    'casts' => self::forForm(self::fillEnumTable(CastPipeline::steps((array) ($saved['casts'] ?? [])), $distinct[$header] ?? [])),
+                    'casts' => self::forForm(self::fillEnumTable(self::withEnumClass(CastPipeline::steps((array) ($saved['casts'] ?? [])), is_string($target) ? $definition->target($target) : null), $distinct[$header] ?? [])),
                     'mode' => in_array($saved['mode'] ?? null, ['lookup', 'create'], true) ? $saved['mode'] : 'lookup',
                     'many' => in_array($saved['many'] ?? null, ['add', 'replace'], true) ? $saved['many'] : 'add',
                 ];
@@ -112,6 +112,33 @@ final class Mapping
     }
 
     /**
+     * An enum step that lost its class (a preset saved from a form that did not carry it) gets it back from the target's own
+     * default pipeline — the value table must never depend on what the browser sent.
+     *
+     * @param list<array{type: string, arg: string, arg2: string, map: array<string, string>}> $casts
+     *
+     * @return list<array{type: string, arg: string, arg2: string, map: array<string, string>}>
+     */
+    public static function withEnumClass(array $casts, ?TargetField $target): array
+    {
+        $class = '';
+
+        foreach ($target->casts ?? [] as $default) {
+            if ($default['type'] === 'enum' && $default['arg'] !== '') {
+                $class = $default['arg'];
+            }
+        }
+
+        foreach ($casts as $i => $step) {
+            if ($step['type'] === 'enum' && $step['arg'] === '' && $class !== '') {
+                $casts[$i]['arg'] = $class;
+            }
+        }
+
+        return $casts;
+    }
+
+    /**
      * The value table as a list of `{from, to}` rows, the shape the form edits.
      *
      * @param list<array{type: string, arg: string, arg2: string, map: array<string, string>}> $casts
@@ -146,8 +173,11 @@ final class Mapping
                 continue;
             }
 
+            $known = array_map(static fn (string|int $k): string => mb_strtolower(trim((string) $k)), array_keys($step['map']));
+
             foreach ($distinct as $value) {
-                if (!array_key_exists($value, $step['map'])) {
+                if (!in_array(mb_strtolower(trim($value)), $known, true)) {
+                    $known[] = mb_strtolower(trim($value));
                     $step['map'][$value] = (string) (CastPipeline::enumValue($step['arg'], $value) ?? '');
                 }
             }

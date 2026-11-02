@@ -157,6 +157,7 @@ final class CastPipeline
         $clean = self::clean($value);
         $decimal = in_array($decimal, ['.', ','], true) ? $decimal : '';
         $thousands = in_array($thousands, ['.', ',', 'space', 'none'], true) ? $thousands : '';
+        $wrongSeparator = static fn (string $declared): CastException => new CastException(__('filament-xlsx-import::filament-xlsx-import.cast.wrong_decimal_separator', ['value' => self::text($value), 'separator' => $declared]));
         $ambiguous = new CastException(__('filament-xlsx-import::filament-xlsx-import.cast.ambiguous_decimal', ['value' => self::text($value)]));
 
         if ($thousands !== '') {
@@ -174,7 +175,11 @@ final class CastPipeline
                 $last = strrpos($clean, '.') > strrpos($clean, ',') ? '.' : ',';
                 $other = $last === '.' ? ',' : '.';
 
-                if (substr_count($clean, $last) !== 1 || ($decimal !== '' && $decimal !== $last)) {
+                if ($decimal !== '' && $decimal !== $last) {
+                    throw $wrongSeparator($decimal);
+                }
+
+                if (substr_count($clean, $last) !== 1) {
                     throw $ambiguous;
                 }
 
@@ -192,7 +197,7 @@ final class CastPipeline
                     $clean = str_replace($char, '', $clean);
                 } elseif ($decimal !== '') {
                     if ($char !== $decimal) {
-                        throw $ambiguous;
+                        throw $wrongSeparator($decimal);
                     }
 
                     $clean = str_replace($char, '.', $clean);
@@ -278,7 +283,12 @@ final class CastPipeline
         $table = [];
 
         foreach ($step['map'] as $from => $to) {
-            $table[mb_strtolower(trim((string) $from))] = $to;
+            $key = mb_strtolower(trim((string) $from));
+
+            // An empty «imported as» never cancels a filled one that looks the same once the case is ignored.
+            if ($to !== '' || !array_key_exists($key, $table)) {
+                $table[$key] = $to;
+            }
         }
 
         $key = mb_strtolower($text);
@@ -418,7 +428,7 @@ final class CastPipeline
             $cast !== null && in_array($cast, ['bool', 'boolean'], true) => 'boolean',
             $cast !== null && in_array($cast, ['date', 'immutable_date'], true) => 'date',
             $cast !== null && (str_contains($cast, 'datetime') || $cast === 'timestamp') => 'datetime',
-            $cast !== null && in_array($cast, ['array', 'json', 'object', 'collection'], true) => 'json',
+            $cast !== null && preg_match('/array|json|object|collection/', $cast) === 1 => 'json',
             default => $columnType,
         };
 

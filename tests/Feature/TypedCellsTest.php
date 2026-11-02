@@ -82,7 +82,7 @@ class TypedCellsTest extends TestCase
         $preview = $this->preview($this->upload($this->products(), $file)->goToWizardStep(3));
 
         $this->assertSame(2, $preview['failed']);
-        $this->assertStringContainsString(__('filament-xlsx-import::filament-xlsx-import.cast.ambiguous_decimal', ['value' => '12.5']), $preview['samples']['errors'][0]['message']);
+        $this->assertStringContainsString(__('filament-xlsx-import::filament-xlsx-import.cast.wrong_decimal_separator', ['value' => '12.5', 'separator' => ',']), $preview['samples']['errors'][0]['message']);
     }
 
     /**

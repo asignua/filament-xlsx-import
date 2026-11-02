@@ -45,8 +45,12 @@ use Filament\Support\Exceptions\Halt;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Contracts\HasTable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
+use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use LogicException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -98,7 +102,11 @@ class XlsxImportAction extends Action
 
     protected bool $allowCreatingRelated = false;
 
+    protected bool $allowUpdatingRelatedWithoutPolicy = false;
+
     protected string|Closure|null $relatedQueryCallback = null;
+
+    protected string|Closure|null $fixedCallback = null;
 
     protected string|Closure|null $saveUsingCallback = null;
 
@@ -267,6 +275,31 @@ class XlsxImportAction extends Action
     }
 
     /**
+     * DANGEROUS: lets a file change an EXISTING related record (a `hasOne` such as an account) when its model has no `update`
+     * policy. `allowCreatingRelated()` never does that; this does, for every row. Prefer a policy.
+     */
+    public function allowUpdatingRelatedWithoutPolicy(bool $condition = true): static
+    {
+        $this->allowUpdatingRelatedWithoutPolicy = $condition;
+
+        return $this;
+    }
+
+    /**
+     * Values merged into EVERY row, server-side: `fn (ImportContext $ctx): array => ['team_id' => $ctx->user?->team_id, 'status' => 'imported']`.
+     * Not mappable by the user and stronger than the file; keys are attributes or `relation.field` of a relation the import offers.
+     * To run queued, give an invokable class name.
+     *
+     * @param class-string|Closure $callback
+     */
+    public function fixedAttributes(string|Closure $callback): static
+    {
+        $this->fixedCallback = $callback;
+
+        return $this;
+    }
+
+    /**
      * Narrow every lookup/create of a related record, e.g. to the tenant's own: `fn (Builder $query, string $relatedClass) => $query->where(…)`.
      * To run queued, give an invokable class name.
      *
@@ -347,6 +380,29 @@ class XlsxImportAction extends Action
         });
     }
 
+    /**
+     * With nothing a file may write to (a fully guarded model that was not given targets) the button is not shown at all — an
+     * admin cannot fix that, a developer must: with `app.debug` on the page says so loudly instead.
+     */
+    public function isVisible(): bool
+    {
+        if (!parent::isVisible()) {
+            return false;
+        }
+
+        $definition = $this->definitionFor($this->getLivewire());
+
+        if ($definition->importer !== null || array_filter($definition->targets, static fn (TargetField $t): bool => !$t->isRelation()) !== []) {
+            return true;
+        }
+
+        if ((bool) config('app.debug')) {
+            throw new LogicException((string) $definition->notice);
+        }
+
+        return false;
+    }
+
     public function definitionFor(mixed $livewire = null): Definition
     {
         if ($this->resolved !== null) {
@@ -385,6 +441,13 @@ class XlsxImportAction extends Action
             $overrides['relations'] = $this->manyRelations;
         }
 
+        // In a relation manager the owner's key (and the morph type) is set by the plugin, never by the file.
+        $owner = $this->ownerRelation();
+
+        if ($owner instanceof HasOneOrMany) {
+            $overrides['except'] = array_values(array_unique([...($overrides['except'] ?? []), $owner->getForeignKeyName(), ...($owner instanceof MorphOneOrMany ? [$owner->getMorphType()] : [])]));
+        }
+
         return $overrides;
     }
 
@@ -394,6 +457,24 @@ class XlsxImportAction extends Action
     private function ownRun(?string $id, Definition $definition): bool
     {
         return is_string($id) && $id !== '' && RunStore::ownedBy($id, Filament::auth()->id(), Filament::getAuthGuard(), Filament::getCurrentPanel()?->getId(), $definition->key());
+    }
+
+    /**
+     * The relation a relation manager (or a ManageRelatedRecords page) shows: new and updated records are attached to its owner.
+     *
+     * @return Relation<Model, Model, mixed>|null
+     */
+    private function ownerRelation(): ?Relation
+    {
+        $livewire = $this->getLivewire();
+
+        if (!is_object($livewire) || !method_exists($livewire, 'getRelationship') || !method_exists($livewire, 'getOwnerRecord')) {
+            return null;
+        }
+
+        $relation = $livewire->getRelationship();
+
+        return $relation instanceof Relation ? $relation : null;
     }
 
     private function dryRunOn(): bool
@@ -860,6 +941,8 @@ class XlsxImportAction extends Action
                                     ->schema([
                                         Grid::make(2)->schema([
                                             Select::make('type')->label($t('cast_label'))->options($castTypes)->native(false)->required()->live(),
+                                            // The enum class is not for the user, but it must travel with the pipeline (presets, the queue).
+                                            Hidden::make('arg')->visible(fn (Get $get): bool => $get('type') === 'enum'),
                                             Select::make('arg')
                                                 ->label(fn (Get $get): string => $t('cast_arg.'.($get('type') ?: 'none')))
                                                 ->options([
@@ -1049,7 +1132,7 @@ class XlsxImportAction extends Action
             $missing[] = $definition->target($key)->label ?? $key;
         }
 
-        return $missing;
+        return array_values(array_unique($missing));
     }
 
     /**
@@ -1155,7 +1238,7 @@ class XlsxImportAction extends Action
         $spec = $this->importSpec($this->importFormState($get), $definition);
 
         try {
-            $result = RunContext::within($spec, fn () => ImportRunner::run($spec, true, $this->saveUsingClosure(), null, $this->relatedQueryClosure()));
+            $result = RunContext::within($spec, fn () => ImportRunner::run($spec, true, $this->saveUsingClosure(), null, $this->relatedQueryClosure(), $this->fixedClosure()));
         } catch (DryRunAborted) {
             $this->stop('dry_run_aborted');
         } catch (Throwable $e) {
@@ -1203,6 +1286,9 @@ class XlsxImportAction extends Action
             'existing' => $updateBy !== null && in_array($data['existing'] ?? null, ['update', 'skip', 'only'], true) ? $data['existing'] : 'update',
             'authorize' => $this->authorizeRecords ?? Gate::getPolicyFor($definition->model) !== null,
             'allow_create_related' => $this->allowCreatingRelated,
+            'fixed' => is_string($this->fixedCallback) ? $this->fixedCallback : null,
+            'owner' => $this->ownerSpec(),
+            'allow_update_related_without_policy' => $this->allowUpdatingRelatedWithoutPolicy,
             'related_query' => is_string($this->relatedQueryCallback) ? $this->relatedQueryCallback : null,
             'max_rows' => $this->limitRows(),
             'options' => (array) ($data['options'] ?? []),
@@ -1214,6 +1300,37 @@ class XlsxImportAction extends Action
             'locale' => app()->getLocale(),
             'tenant' => ($tenant = TenantScope::current()) !== null ? ['class' => $tenant::class, 'key' => $tenant->getKey()] : null,
         ];
+    }
+
+    /**
+     * @return array{class: class-string, key: mixed, relation: string}|null
+     */
+    private function ownerSpec(): ?array
+    {
+        $livewire = $this->getLivewire();
+
+        if ($this->ownerRelation() === null || !is_object($livewire) || !method_exists($livewire, 'getOwnerRecord') || !method_exists($livewire, 'getRelationshipName')) {
+            return null;
+        }
+
+        $owner = $livewire->getOwnerRecord();
+
+        return $owner instanceof Model ? ['class' => $owner::class, 'key' => $owner->getKey(), 'relation' => (string) $livewire::getRelationshipName()] : null;
+    }
+
+    private function fixedClosure(): ?Closure
+    {
+        if ($this->fixedCallback instanceof Closure) {
+            return $this->fixedCallback;
+        }
+
+        if (is_string($this->fixedCallback) && $this->fixedCallback !== '') {
+            $handler = app($this->fixedCallback);
+
+            return is_callable($handler) ? $handler(...) : null;
+        }
+
+        return null;
     }
 
     private function saveUsingClosure(): ?Closure
@@ -1277,7 +1394,7 @@ class XlsxImportAction extends Action
         }
 
         if ($this->willQueue($rows)) {
-            if ($this->saveUsingCallback instanceof Closure || $this->relatedQueryCallback instanceof Closure) {
+            if ($this->saveUsingCallback instanceof Closure || $this->relatedQueryCallback instanceof Closure || $this->fixedCallback instanceof Closure) {
                 $this->stop('closure_not_queueable');
             }
 
@@ -1304,6 +1421,7 @@ class XlsxImportAction extends Action
                 $this->saveUsingClosure(),
                 static fn (int $processed, int $total) => RunStore::put($id, ['progress' => ['processed' => $processed, 'total' => $total]]),
                 $this->relatedQueryClosure(),
+                $this->fixedClosure(),
             );
         } catch (Throwable $e) {
             report($e);

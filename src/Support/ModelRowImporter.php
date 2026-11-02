@@ -10,10 +10,14 @@ use BackedEnum;
 use Closure;
 use DateTimeInterface;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasOneOrMany;
+use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
 use Throwable;
@@ -32,6 +36,7 @@ final class ModelRowImporter implements RowImporter
     /**
      * @param list<array{header: string, target: string|null, casts: list<array{type: string, arg: string, arg2: string, map: array<string, string>}>, mode: string, many: string}> $mapping
      * @param array<string, mixed>                                                                                                                                                  $spec
+     * @param Relation<Model, Model, mixed>|null                                                                                                                                    $owner
      * @param Closure(array<string, mixed>, ?Model, ImportContext): (Model|null)|null                                                                                               $saveUsing
      */
     public function __construct(
@@ -42,6 +47,8 @@ final class ModelRowImporter implements RowImporter
         private readonly bool $dryRun,
         private readonly ?Closure $saveUsing = null,
         private readonly ?Closure $relatedQuery = null,
+        private readonly ?Closure $fixed = null,
+        private readonly ?Relation $owner = null,
     ) {
         $this->connections = Connections::names($definition);
     }
@@ -55,6 +62,7 @@ final class ModelRowImporter implements RowImporter
     {
         try {
             [$attributes, $relations] = $this->extract($row);
+            $this->applyFixed($attributes, $relations, $number);
             $key = is_string($this->spec['update_by'] ?? null) ? $this->spec['update_by'] : null;
             $existing = null;
             $duplicate = false;
@@ -66,7 +74,7 @@ final class ModelRowImporter implements RowImporter
                     return RowOutcome::failed(__('filament-xlsx-import::filament-xlsx-import.row.key_empty', ['field' => $this->definition->target($key)->label ?? $key]));
                 }
 
-                $existing = TenantScope::scope($this->definition->model::query(), new ($this->definition->model))->where($key, $value)->first();
+                $existing = $this->scopeToOwner(TenantScope::scope($this->definition->model::query(), new ($this->definition->model)))->where($key, $value)->first();
                 $token = $key.'='.(is_scalar($value) ? (string) $value : json_encode($value));
                 $duplicate = isset($this->seen[$token]);
                 $this->seen[$token] = true;
@@ -86,6 +94,11 @@ final class ModelRowImporter implements RowImporter
             $this->validate($attributes, $relations, $existing === null);
 
             $changes = $existing !== null ? $this->diff($existing, $attributes, $relations) : $this->newValues($attributes, $relations);
+
+            // A record found by its key that is not yet attached to the owner (relation manager, many-to-many) still has to be attached.
+            if ($existing !== null && $changes === [] && $this->owner instanceof BelongsToMany && !$this->isAttached($existing)) {
+                $changes = [__('filament-xlsx-import::filament-xlsx-import.row.attached') => [null, '✓']];
+            }
 
             if ($existing !== null && $changes === []) {
                 return new RowOutcome(RowOutcome::SKIPPED, __('filament-xlsx-import::filament-xlsx-import.row.unchanged'), [], $label, $duplicate);
@@ -117,7 +130,7 @@ final class ModelRowImporter implements RowImporter
             }
 
             try {
-                $value = CastPipeline::apply($row[$entry['header']] ?? '', $entry['casts']);
+                $value = CastPipeline::apply($row[$entry['header']] ?? '', Mapping::withEnumClass($entry['casts'], $target));
             } catch (CastException $e) {
                 throw new CastException($target->label.': '.$e->getMessage());
             }
@@ -293,11 +306,16 @@ final class ModelRowImporter implements RowImporter
 
         if ($existing === null) {
             TenantScope::assign($model);
+            $this->ownRecord($model);
         }
 
         // After the new values are in the model: a policy that looks at the record sees what is about to be saved.
         $this->authorize($model);
         $model->save();
+
+        if ($this->owner instanceof BelongsToMany) {
+            $this->owner->syncWithoutDetaching([$model->getKey()]);
+        }
 
         foreach ($relations as $name => $info) {
             $relation = $model->{$name}();
@@ -325,6 +343,82 @@ final class ModelRowImporter implements RowImporter
     }
 
     /**
+     * Values the developer fixes for every row (`->fixedAttributes()`): server-side, not mappable, and they win over the file.
+     * Keys are attributes, or `relation.field` of a relation target the definition has.
+     *
+     * @param array<string, mixed>                                                                                $attributes
+     * @param array<string, array{target: TargetField, fields: array<string, mixed>, mode: string, many: string}> $relations
+     */
+    private function applyFixed(array &$attributes, array &$relations, int $number): void
+    {
+        if ($this->fixed === null) {
+            return;
+        }
+
+        $values = ($this->fixed)(new ImportContext($this->user, $number, $this->dryRun, $this->spec));
+
+        foreach ((array) $values as $key => $value) {
+            $key = (string) $key;
+
+            if (!str_contains($key, '.')) {
+                $attributes[$key] = $value;
+
+                continue;
+            }
+
+            $target = $this->definition->target($key);
+
+            if ($target === null || !$target->isRelation()) {
+                throw new RowFailed(__('filament-xlsx-import::filament-xlsx-import.row.fixed_unknown', ['key' => $key]));
+            }
+
+            $relations[$target->relation] ??= ['target' => $target, 'fields' => [], 'mode' => $target->mode, 'many' => $target->many];
+            $relations[$target->relation]['fields'][$target->field] = $value;
+        }
+    }
+
+    /**
+     * Relation manager: an existing record is looked up among the owner's own (hasMany); a many-to-many attaches existing ones.
+     *
+     * @param Builder<Model> $query
+     *
+     * @return Builder<Model>
+     */
+    private function scopeToOwner(Builder $query): Builder
+    {
+        if ($this->owner instanceof HasOneOrMany) {
+            $query->where($this->owner->getQualifiedForeignKeyName(), $this->owner->getParentKey());
+
+            if ($this->owner instanceof MorphOneOrMany) {
+                $query->where($this->owner->getQualifiedMorphType(), $this->owner->getMorphClass());
+            }
+        }
+
+        return $query;
+    }
+
+    private function ownRecord(Model $model): void
+    {
+        if (!$this->owner instanceof HasOneOrMany) {
+            return;
+        }
+
+        $model->setAttribute($this->owner->getForeignKeyName(), $this->owner->getParentKey());
+
+        if ($this->owner instanceof MorphOneOrMany) {
+            $model->setAttribute($this->owner->getMorphType(), $this->owner->getMorphClass());
+        }
+    }
+
+    private function isAttached(Model $model): bool
+    {
+        return $this->owner instanceof BelongsToMany && $this->owner->newPivotStatement()
+            ->where($this->owner->getForeignPivotKeyName(), $this->owner->getParent()->getAttribute($this->owner->getParentKeyName()))
+            ->where($this->owner->getRelatedPivotKeyName(), $model->getKey())
+            ->exists();
+    }
+
+    /**
      * @param class-string<Model>|Model $subject
      */
     private function authorize(Model|string $subject): void
@@ -341,14 +435,16 @@ final class ModelRowImporter implements RowImporter
     }
 
     /**
-     * Writing into a related record (hasOne) is a write to that model: its `update` policy for an existing one, the create
-     * rules for a new one — or the explicit `->allowCreatingRelated()`.
+     * Writing into a related record (hasOne) is a write to that model: its `update` policy for an existing one (never waived by
+     * `->allowCreatingRelated()`), the create rules for a new one.
      */
     private function authorizeRelatedWrite(Model $related, TargetField $target, bool $creating): void
     {
         $allowed = $creating
             ? $this->mayCreate($target)
-            : (($this->spec['allow_create_related'] ?? false) === true
+            // `allowCreatingRelated()` is about CREATING; changing an existing related record always needs its own `update` policy,
+            // unless the developer named the (dangerous) switch that says otherwise.
+            : (($this->spec['allow_update_related_without_policy'] ?? false) === true
                 || ($this->user !== null && Gate::getPolicyFor($related) !== null && Gate::forUser($this->user)->allows('update', $related)));
 
         if (!$allowed) {

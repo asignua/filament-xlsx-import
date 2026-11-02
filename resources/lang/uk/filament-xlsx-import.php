@@ -193,6 +193,7 @@ return [
     ],
     'cast' => [
         'not_integer' => '«:value» — не ціле число.',
+        'wrong_decimal_separator' => 'Задано десятковий роздільник «:separator», а «:value» використовує інший.',
         'ambiguous_decimal' => '«:value» може бути і розділювачем тисяч, і десятковим — вкажіть роздільники в правилі.',
         'not_decimal' => '«:value» — не число.',
         'not_boolean' => '«:value» — не так/ні (перевірте слова для так/ні).',
@@ -202,6 +203,8 @@ return [
         'bad_pattern' => 'Некоректний регулярний вираз.',
     ],
     'row' => [
+        'attached' => 'Приєднано',
+        'fixed_unknown' => '«:key» — невідоме цьому імпорту поле (fixedAttributes).',
         'related_unauthorized' => 'Вам не дозволено змінювати зв’язаний запис «:relation».',
         'duplicate_in' => 'Повторне значення в :column.',
         'duplicate' => 'Повторне значення.',

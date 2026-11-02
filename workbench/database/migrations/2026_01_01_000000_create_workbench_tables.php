@@ -111,6 +111,15 @@ return new class extends Migration
             $table->timestamps();
         });
 
+        Schema::create('related_contacts', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->string('boss_ref')->nullable();
+            $table->string('owner_uuid')->nullable();
+            $table->text('payload')->nullable();
+            $table->timestamps();
+        });
+
         // The plugin's own (publishable) migration, as an app would run it after vendor:publish.
         (require __DIR__.'/../../../database/migrations/create_xlsx_import_presets_table.php.stub')->up();
     }

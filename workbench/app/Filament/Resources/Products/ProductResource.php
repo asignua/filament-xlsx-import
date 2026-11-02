@@ -34,8 +34,18 @@ class ProductResource extends Resource
         ])->defaultSort('id', 'desc');
     }
 
+    public static function form(\Filament\Schemas\Schema $schema): \Filament\Schemas\Schema
+    {
+        return $schema->components([\Filament\Forms\Components\TextInput::make('sku'), \Filament\Forms\Components\TextInput::make('name')]);
+    }
+
+    public static function getRelations(): array
+    {
+        return [RelationManagers\TagsRelationManager::class];
+    }
+
     public static function getPages(): array
     {
-        return ['index' => ListProducts::route('/')];
+        return ['index' => ListProducts::route('/'), 'edit' => Pages\EditProduct::route('/{record}/edit')];
     }
 }

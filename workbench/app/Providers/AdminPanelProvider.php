@@ -17,6 +17,7 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use Workbench\App\Filament\Resources\Categories\CategoryResource;
 use Workbench\App\Filament\Resources\Contacts\ContactResource;
 use Workbench\App\Filament\Resources\Products\ProductResource;
 
@@ -30,7 +31,7 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
             ->login()
             ->databaseNotifications()
-            ->resources([ProductResource::class, ContactResource::class])
+            ->resources([ProductResource::class, ContactResource::class, CategoryResource::class])
             ->plugin(XlsxImportPlugin::make())
             ->middleware([
                 EncryptCookies::class,

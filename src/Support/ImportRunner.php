@@ -24,7 +24,7 @@ final class ImportRunner
      *
      * @return array<string, mixed>
      */
-    public static function run(array $spec, bool $dry, ?Closure $saveUsing = null, ?Closure $progress = null, ?Closure $relatedQuery = null): array
+    public static function run(array $spec, bool $dry, ?Closure $saveUsing = null, ?Closure $progress = null, ?Closure $relatedQuery = null, ?Closure $fixed = null): array
     {
         $id = (string) $spec['run_id'];
         $meta = RunStore::meta($id);
@@ -43,7 +43,7 @@ final class ImportRunner
         $user = Auth::user();
         $engine = $definition->importer !== null
             ? new ImporterRowImporter($importerClass, $mapping, (array) ($spec['options'] ?? []), $spec, $user, (string) ($meta['file_name'] ?? 'import'))
-            : new ModelRowImporter($definition, $mapping, $spec, $user, $dry, $saveUsing, $relatedQuery);
+            : new ModelRowImporter($definition, $mapping, $spec, $user, $dry, $saveUsing, $relatedQuery, $fixed, self::owner($spec));
 
         $headers = array_values(array_map('strval', (array) ($meta['headers'] ?? [])));
         $report = RunStore::path($id, 'report.xlsx');
@@ -111,6 +111,32 @@ final class ImportRunner
         $progress?->__invoke($result['processed'], $total);
 
         return $result;
+    }
+
+    /**
+     * The relation of the record whose relation manager started the import (hasMany / many-to-many), if any.
+     *
+     * @param array<string, mixed> $spec
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\Relation<\Illuminate\Database\Eloquent\Model, \Illuminate\Database\Eloquent\Model, mixed>|null
+     */
+    private static function owner(array $spec): ?\Illuminate\Database\Eloquent\Relations\Relation
+    {
+        $owner = $spec['owner'] ?? null;
+
+        if (!is_array($owner) || !is_string($owner['class'] ?? null) || !is_string($owner['relation'] ?? null) || !is_subclass_of($owner['class'], \Illuminate\Database\Eloquent\Model::class)) {
+            return null;
+        }
+
+        $record = $owner['class']::query()->find($owner['key'] ?? null);
+
+        if (!$record instanceof \Illuminate\Database\Eloquent\Model || !method_exists($record, $owner['relation'])) {
+            throw new \RuntimeException('The record this import belongs to is gone.');
+        }
+
+        $relation = $record->{$owner['relation']}();
+
+        return $relation instanceof \Illuminate\Database\Eloquent\Relations\Relation ? $relation : null;
     }
 
     /**
