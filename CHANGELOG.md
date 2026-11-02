@@ -19,3 +19,11 @@ First release.
 - Template download with real dropdowns for enum / `in:` columns.
 - `->saveUsing()` for repository-only apps, `->authorizeRecords()`, file size and row limits.
 - English and Ukrainian translations. Tested on Filament 5.11.
+
+Security hardening (from an independent review, before the first tag):
+
+- Zero config no longer offers the primary key, timestamps, `$hidden` attributes, secrets, privilege flags or the tenant column; `$fillable` restricts; `->only()` / `->except()` / `DefinesImport` `targets`; the key and every target are re-checked server-side.
+- `belongsToMany` only when allowlisted, role/permission relations never automatic; `mode` is a request (rule `'lookup'` locks it), creating related records needs the related `create` policy or `->allowCreatingRelated()`; tenant-scoped lookups, creates and upserts; `->relatedQueryUsing()`.
+- `authorizeRecords()` checks after the new values are filled and defaults to on when the model has a policy.
+- Dry run and row transactions use the model's (and related models') connection; an implicit commit aborts the preview.
+- A crashed run reports how many rows were already saved; `queue.after` hook; the worker's URL root is restored; run ids are bound to user, guard, panel and target; presets are scoped by guard, panel and tenant and restore the key and mode; no SQL/bindings in row errors; row limit enforced while streaming and a column cap.

@@ -7,3 +7,5 @@
 - The dry run executes real writes in a rolled-back transaction: side effects outside the database (mail, files, an Importer's `afterSave` hooks) are not rolled back.
 - Presets need the published migration (`php artisan vendor:publish --tag=filament-xlsx-import-migrations`).
 - Run `php artisan xlsx-import:prune` (scheduled daily) to delete old uploads and failed-row reports.
+- Zero config never offers the primary key, timestamps, `$hidden`/secret/privilege columns or the tenant column, and only `belongsTo`/`hasOne` relations; for user-like or role-like models list targets explicitly with `->only([...])`, `->relations([...])` or `'targets'` in `importRules()`. Creating related records needs their `create` policy or `->allowCreatingRelated()`; `authorizeRecords()` is on by default when a policy exists.
+- Re-running a half-finished import needs an upsert key (`->updateBy()`), otherwise the rows already saved are created again.

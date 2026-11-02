@@ -14,8 +14,7 @@ the casts, **preview every change without writing a row**, then apply — inline
 It is the import companion of [filament-xlsx-export](https://github.com/asignua/filament-xlsx-export) and a maintained
 successor of `eightynine/filament-excel-import` (Filament 4 only, [issue #63](https://github.com/eighty9nine/filament-excel-import/issues/63)).
 
-- Zero config: point it at a model. The targets come from the database columns, `$casts` and the relations
-  (`belongsTo`, `hasOne`, `belongsToMany`). A Filament `Importer` class is optional — and works as it is when you have one.
+- Zero config: point it at a model. The targets come from the database columns, `$casts` and the `belongsTo` / `hasOne` relations — **minus everything a file must not touch** (see [What a file may write to](#what-a-file-may-write-to)). A Filament `Importer` class is optional — and works as it is when you have one.
 - **Dry run** with a «will create / update / skip / fail» summary and the field-level diff of the updates, before anything is written.
 - **Casts per column** (trim, case, integer, decimal with `,` or `.`, yes/no incl. `так/ні`, date with a source format, enum value tables, JSON, split to a list, default, regex), chained, pre-selected from the model's `$casts`.
 - **Model rules** (`DefinesImport`): aliases, casts, validation, upsert key, relation behaviour — pre-filled and marked «from model rules»; the user may change them **for one run**, with «Reset to model rule».
@@ -31,6 +30,7 @@ successor of `eightynine/filament-excel-import` (Filament 4 only, [issue #63](ht
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Usage](#usage)
+- [What a file may write to](#what-a-file-may-write-to)
 - [Model rules](#model-rules)
 - [Casts](#casts)
 - [Related records](#related-records)
@@ -102,6 +102,29 @@ With an `Importer` class its columns are the targets, its `resolveRecord()`, val
 as they are; the plugin only puts the mapping and casts in front of it. No `imports` table is needed. For the Importer the
 upsert is whatever its `resolveRecord()` does; `->updateBy()` is for the model mode.
 
+## What a file may write to
+
+An import runs with `forceFill()` (so mass assignment can stay off). That makes the list of targets a security decision, so the zero-config list is conservative:
+
+- **Never offered:** the primary key, timestamps and `deleted_at`, every `$hidden` attribute, secrets (`password`, `remember_token`, `api_token`, `*_secret`, `*_token`, `two_factor_*`), privilege flags (`is_admin`, `role`, `permissions`…) and — when the panel has tenancy — the tenant ownership column.
+- A model with a non-empty **`$fillable`** is restricted to it (models with `$guarded = ['*']`, as in eEgnith, use the deny-list above).
+- **Relations:** `belongsTo` and `hasOne` are discovered; **`belongsToMany` only when you name it** (`->relations(['tags'])` or `'relations'` in `importRules()`); role/permission relations (spatie `Role`/`Permission`, relations named `roles`/`permissions`) are never offered unless you name them yourself.
+- The upsert key can only be one of the offered attributes — never the primary key — and the server re-checks every target and the key against that list, whatever the browser sends.
+
+```php
+XlsxImportAction::make()->model(Member::class)->only(['name', 'email', 'phone'])->updateBy('email');   // an explicit allowlist
+XlsxImportAction::make()->model(Product::class)->except(['cost_price'])->relations(['tags']);
+// or in DefinesImport::importRules(): 'targets' => [...], 'except' => [...], 'relations' => [...]
+```
+
+`only()` may list the primary key or a secret: that is then your decision. **For user-like and role-like models always list the targets explicitly** — flags such as `is_active` or a custom `level` column cannot be recognised by name.
+
+**Authorization.** `->authorizeRecords()` checks the model policy for every row — `update` *after* the new values are in the model and before it is saved, so a policy that looks at the new state sees it. It is **on by default when a policy is registered for the model** (`->authorizeRecords(false)` switches it off); without a policy rows are not checked, as in Filament's own importer.
+
+**Related records.** «Create it» is a request, not a permission: a rule with `'mode' => 'lookup'` locks the relation (unless it says `'allow_create' => true`), and creating needs the related model's `create` policy for the user — without a policy it is refused unless you call `->allowCreatingRelated()`. Attaching to a parent requires `update` on the parent (the check above).
+
+**Tenancy.** With a Filament tenant the lookup of existing records, the lookups and creations of related records are scoped to the current tenant (through the panel's ownership relationship), new records are stamped with it, and the tenant is restored in the queue worker. `->relatedQueryUsing(fn (Builder $query, string $relatedClass) => …)` narrows related lookups further (or covers models without the ownership relationship).
+
 ## Model rules
 
 A model (or a separate class listed in `config('filament-xlsx-import.definitions')` or `->definition(Class::class)`) can
@@ -172,7 +195,7 @@ Targets of the form `category.name` write into a related model, found automatica
 | `hasOne` | updated or created after the main record is saved |
 | `belongsToMany` | the values (use `split`) are looked up/created and attached: «add the new ones» (`syncWithoutDetaching`) or «replace them» (`sync`) |
 
-Every row is written in **its own transaction**: if the tag lookup fails, the category created for that row is rolled back with it.
+Every row is written in **its own transaction** (on the model's own connection and those of the related models): if the tag lookup fails, the category created for that row is rolled back with it.
 
 ## Upsert by key
 
@@ -184,12 +207,20 @@ exactly as it will in the real run. An empty key fails the row. A row whose cell
 
 ## Dry run
 
-The preview step runs the whole import inside a transaction that is **rolled back** — so unique indexes, observers, casts and
+The preview step runs the whole import through the real code inside a transaction on the model's own connection(s) that is **rolled back** — so unique indexes, observers, casts and
 your `rules` all speak — and shows created / updated / skipped / failed, a sample of the field-level changes (`Price: ~~1.20~~ → 1.45`),
 the new records, and the rows that will fail with the reason. «Import» then does it for real.
 
+It rolls back **the database, and only the database**. What a rehearsal can still leave behind:
+
+- observers, `saveUsing` and Importer hooks **run**, so whatever they do outside the database happens: mail, files, HTTP calls, cache writes;
+- queued jobs that are not `afterCommit` are dispatched; Scout/search indexing with `after_commit = false` indexes the rehearsed record;
+- auto-increment counters move (gaps), events are fired.
+
+A statement that commits on its own — DDL or `TRUNCATE` on MySQL, a hook calling `DB::commit()` — breaks the transaction. The plugin checks the transaction level after every row and
+**aborts the preview with «the data may have been written»** when it dropped. If your models have such side effects, switch the preview off for that import with `->dryRun(false)`; `ImportContext::$dryRun` tells `saveUsing` code it is a rehearsal.
+
 - It reads at most `dry_run.max_rows` (5 000) rows and says so when the file is longer; the real import reads every row.
-- With an `Importer` class its hooks run in the dry run too (the transaction is rolled back, mail and files are not): keep side effects out of `beforeSave`/`afterSave` or switch it off with `->dryRun(false)`.
 
 ## Queue
 
@@ -204,7 +235,9 @@ It runs **as the user who clicked** — their locale, guard and panel are restor
 the next job in the same worker is not affected. A user who lost panel access meanwhile gets nothing imported.
 One try (a retry would import the first chunks twice); the timeout is kept 10 s under the connection's `retry_after`;
 `queue.max_per_user` (2) caps unfinished imports. `queue.before` is a callable `fn (User $user, ?Panel $panel)` run first — re-apply the scoping your panel middleware does.
-A `->saveUsing()` closure cannot be queued: pass an invokable class name.
+`queue.after` (same signature) undoes `before` and runs even when the job crashed. A `->saveUsing()` / `->relatedQueryUsing()` closure cannot be queued: pass an invokable class name.
+
+**When a run stops half way** (a crash, a killed worker) the chunks already committed stay: the failure notification says how many rows that is, and the way out is to run the file again with an **upsert key** — rows already saved are then updated (or skipped as «nothing to change»), not duplicated. Without a key a re-run would create them again, so set one for imports that can be re-run. The same holds for an inline import.
 
 ## Failed rows and template
 
@@ -219,7 +252,8 @@ The template's headers are the labels the auto-mapper recognises, so a filled te
 ## Presets
 
 Type a name under the mapping and the mapping, casts, relation modes, the key and the Importer options are kept; next time pick it on the File step.
-Columns are matched by **header**, so another order (or extra columns) is fine. Presets belong to the user and to the model (or Importer);
+Columns are matched by **header**, so another order (or extra columns) is fine. Presets belong to the user, the model (or Importer), the guard, the panel and — with tenancy — the tenant; a shared preset is shared within that scope only. Loading one restores the key ("Update existing records by") and the existing-record mode it was saved with.
+Presets belong to the user and to the model (or Importer);
 a user the `shareXlsxImportPresets` gate allows (`config('filament-xlsx-import.presets.share_ability')`) can share one with everybody who can run that import.
 Saving the same name again overwrites your own. Needs the published migration; without the table the preset fields simply do not appear.
 
@@ -242,9 +276,8 @@ Inside the dry run the call happens too (in the rolled-back transaction): write 
 
 ## Limits and authorization
 
-`->maxFileSize(5_120)` (KB, also an upload-field rule) and `->maxRows(20_000)`, defaults in the config. The action is an ordinary Filament action:
-`->authorize(...)`, `->visible(...)`. Like Filament's own importer, rows are **not** checked against policies by default; `->authorizeRecords()`
-checks the model policy (`create` / `update`) for every row and fails the denied ones with a reason in the report.
+`->maxFileSize(5_120)` (KB, also an upload-field rule) and `->maxRows(20_000)`, defaults in the config (`max_columns` caps the width, 200 by default). The row limit is enforced while streaming (the scan stops one row past it) and again by the import. A row error never shows SQL, bindings or file paths: a unique violation reads «Duplicate value in email», any other database or unexpected error is generic and goes to the log; throw `RowFailed` from `saveUsing` to fail a row with your own message. The action is an ordinary Filament action:
+`->authorize(...)`, `->visible(...)`. The run id lives in a hidden form field: it is accepted only for the user, guard, panel and import target that started it.
 
 ## Configuration
 
