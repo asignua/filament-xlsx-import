@@ -23,6 +23,7 @@ final class Definition
         public readonly array $targets,
         public readonly ?string $updateBy = null,
         public readonly bool $hasRules = false,
+        public readonly ?string $notice = null,
     ) {}
 
     public function target(string $key): ?TargetField

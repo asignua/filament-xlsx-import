@@ -15,11 +15,14 @@ use Asignua\FilamentXlsxImport\Support\RunStore;
 use Asignua\FilamentXlsxImport\Support\SourceFile;
 use Asignua\FilamentXlsxImport\Tests\Support\ContactPolicy;
 use Asignua\FilamentXlsxImport\Tests\Support\DrivesImport;
+use Asignua\FilamentXlsxImport\Tests\Support\FillableAccount;
 use Asignua\FilamentXlsxImport\Tests\Support\FillableContact;
+use Asignua\FilamentXlsxImport\Tests\Support\GuardedThing;
 use Asignua\FilamentXlsxImport\Tests\Support\HiddenContact;
 use Asignua\FilamentXlsxImport\Tests\Support\OtherWidget;
 use Asignua\FilamentXlsxImport\Tests\Support\RecordingHandlers;
 use Asignua\FilamentXlsxImport\Tests\Support\Sheet;
+use Asignua\FilamentXlsxImport\Tests\Support\UnguardedProduct;
 use Asignua\FilamentXlsxImport\Tests\TestCase;
 use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
@@ -34,6 +37,7 @@ use Workbench\App\Filament\Resources\Contacts\ContactResource;
 use Workbench\App\Filament\Resources\Products\ProductResource;
 use Workbench\App\Models\Category;
 use Workbench\App\Models\Contact;
+use Workbench\App\Models\Employee;
 use Workbench\App\Models\Product;
 use Workbench\App\Models\Role;
 use Workbench\App\Models\Team;
@@ -182,11 +186,12 @@ class SecurityTest extends TestCase
 
     public function test_the_tenant_column_is_never_offered_with_tenancy(): void
     {
-        $this->assertContains('team_id', array_keys(ModelIntrospector::targets(Product::class)));
-
+        $this->assertSame([], ModelIntrospector::tenantColumns(new Product));
+        // an explicit allowlist can name it (the developer's decision) — but the tenant column is what ties a record to its tenant:
         Filament::getPanel('admin')->tenant(Team::class, ownershipRelationship: 'team');
 
-        $this->assertNotContains('team_id', array_keys(ModelIntrospector::targets(Product::class)));
+        $this->assertSame(['team_id'], ModelIntrospector::tenantColumns(new Product));
+        $this->assertNotContains('team_id', array_keys(ModelIntrospector::targets(UnguardedProduct::class)));
     }
 
     public function test_update_is_authorized_after_the_new_values_are_in_the_model(): void
@@ -256,10 +261,10 @@ class SecurityTest extends TestCase
 
     public function test_many_to_many_is_offered_only_when_allowlisted(): void
     {
-        $this->assertNotContains('tags.name', array_keys(ModelIntrospector::targets(Product::class)));
-        $this->assertContains('tags.name', array_keys(ModelIntrospector::targets(Product::class, ['relations' => ['tags']])));
+        $this->assertNotContains('tags.name', array_keys(ModelIntrospector::targets(UnguardedProduct::class)), 'Never discovered automatically, even with an open related model.');
+        $this->assertContains('tags.name', array_keys(ModelIntrospector::targets(UnguardedProduct::class, ['relations' => ['tags']])));
         $this->assertContains('tags.name', array_keys(DefinitionResolver::resolve(Product::class, null)->targets), 'Product::importRules() allowlists it.');
-        $this->assertContains('roles.name', array_keys(ModelIntrospector::targets(User::class, ['relations' => ['roles']])), 'An explicit allowlist is the developer\'s call.');
+        $this->assertContains('roles.name', array_keys(ModelIntrospector::targets(User::class, ['only' => ['email', 'roles.name'], 'relations' => ['roles']])), 'An explicit allowlist is the developer\'s call.');
     }
 
     public function test_a_lookup_rule_is_a_lock_the_user_cannot_turn_into_create(): void
@@ -268,10 +273,23 @@ class SecurityTest extends TestCase
         ProductResource::$header = fn (): array => [XlsxImportAction::make()->model(Product::class)->allowCreatingRelated()->fieldRules(['category.name' => ['mode' => 'lookup']])];
 
         $page = $this->upload($this->products(), $file);
-        $page->set('mountedActions.0.data.mapping.2.mode', 'create')->goToWizardStep(3);
 
-        $this->assertSame(1, $this->preview($page)['failed']);
-        $page->callMountedAction();
+        // The screen does not offer «create» for a locked relation...
+        $page->set('mountedActions.0.data.mapping.2.mode', 'create')->goToWizardStep(3);
+        $this->assertSame([], $this->preview($page));
+
+        // ...and the server does not trust the screen: a forged state that says «create» still only looks up.
+        $mapping = $this->mapping($page);
+        $mapping[2]['mode'] = 'create';
+        $spec = [
+            'run_id' => $this->runId($page), 'model' => Product::class, 'importer' => null, 'definition' => null,
+            'overrides' => ['update_by' => null, 'fields' => ['category.name' => ['mode' => 'lookup']]],
+            'mapping' => \Asignua\FilamentXlsxImport\Support\Mapping::fromState($mapping), 'update_by' => 'sku', 'existing' => 'update',
+            'authorize' => false, 'allow_create_related' => true, 'options' => [], 'sheet' => 0,
+        ];
+        $result = \Asignua\FilamentXlsxImport\Support\ImportRunner::run($spec, false);
+
+        $this->assertSame(1, $result['failed']);
         $this->assertSame(0, Category::count());
         $this->assertSame(0, Product::count());
     }
@@ -361,6 +379,138 @@ class SecurityTest extends TestCase
         $this->assertSame(1, $this->preview($page->goToWizardStep(3))['failed']);
     }
 
+    // ---------------------------------------------------------------------------------------------------- re-review: S1 / S2 / S3
+
+    public function test_a_fully_guarded_model_offers_nothing_until_the_developer_says_what(): void
+    {
+        $definition = DefinitionResolver::resolve(GuardedThing::class, null);
+
+        $this->assertSame([], $definition->targets);
+        $this->assertNotNull($definition->notice);
+        $this->assertStringContainsString('GuardedThing', (string) $definition->notice);
+
+        // ...and the developer's declaration opens exactly that
+        $this->assertSame(['name', 'email'], array_keys(DefinitionResolver::resolve(GuardedThing::class, null, null, ['only' => ['name', 'email']])->targets));
+    }
+
+    public function test_the_upload_of_a_fully_guarded_model_is_refused_with_the_developer_message(): void
+    {
+        $this->contactsAction(XlsxImportAction::make()->model(GuardedThing::class));
+
+        $page = $this->upload($this->contacts(), Sheet::csv('name,email
+Ada,ada@example.com
+'));
+
+        $this->assertSame('', $this->runId($page));
+        Notification::assertNotified(__('filament-xlsx-import::filament-xlsx-import.notice_no_targets', ['model' => 'GuardedThing']));
+    }
+
+    public function test_fillable_is_the_whole_list_and_a_fillable_password_is_still_not_offered(): void
+    {
+        $targets = array_keys(ModelIntrospector::targets(FillableAccount::class));
+
+        $this->assertSame(['name', 'email', 'is_active'], $targets);
+    }
+
+    public function test_camel_case_secrets_are_recognised(): void
+    {
+        foreach (['apiToken', 'isAdmin', 'twoFactorSecret', 'rememberToken', 'passwordHash', 'stripe_secret', 'role_id'] as $name) {
+            $this->assertTrue(ModelIntrospector::sensitiveName($name), $name);
+        }
+
+        $this->assertFalse(ModelIntrospector::sensitiveName('email'));
+    }
+
+    public function test_json_columns_and_foreign_keys_are_not_raw_attribute_targets(): void
+    {
+        $targets = array_keys(ModelIntrospector::targets(UnguardedProduct::class));
+
+        $this->assertNotContains('meta', $targets);
+        $this->assertNotContains('category_id', $targets);
+        $this->assertNotContains('team_id', $targets);
+        $this->assertContains('sku', $targets);
+        $this->assertContains('meta', array_keys(ModelIntrospector::targets(UnguardedProduct::class, ['only' => ['meta']])), 'An explicit allowlist can still name them.');
+    }
+
+    public function test_the_related_model_follows_the_same_declaration_rules(): void
+    {
+        // Category is fully guarded: «category.name» is not offered by itself, only when the developer lists it.
+        $this->assertNotContains('category.name', array_keys(ModelIntrospector::targets(UnguardedProduct::class)));
+        $this->assertContains('category.name', array_keys(ModelIntrospector::targets(UnguardedProduct::class, ['only' => ['sku', 'category.name']])));
+    }
+
+    public function test_the_login_model_is_never_offered_as_a_relation_target(): void
+    {
+        $automatic = array_keys(ModelIntrospector::targets(Employee::class));
+
+        $this->assertSame([], array_filter($automatic, fn (string $k): bool => str_starts_with($k, 'account.') || str_starts_with($k, 'owner.')), 'hasOne and belongsTo into the auth user model need an explicit relations() entry.');
+
+        // not even an `only` entry opens it by itself
+        $this->assertSame([], array_filter(array_keys(ModelIntrospector::targets(Employee::class, ['only' => ['code', 'account.email', 'owner.email']])), fn (string $k): bool => str_contains($k, '.')));
+
+        $named = array_keys(ModelIntrospector::targets(Employee::class, ['only' => ['code', 'account.email'], 'relations' => ['account']]));
+        $this->assertContains('account.email', $named);
+    }
+
+    public function test_a_has_one_cannot_rewrite_the_admins_login_when_the_user_policy_denies_everything(): void
+    {
+        $admin = User::factory()->create(['email' => 'admin@example.com']);
+        $employee = new Employee;
+        $employee->forceFill(['name' => 'Eve', 'code' => 'E-1'])->save();
+        $admin->forceFill(['employee_id' => $employee->id])->save();
+        Gate::policy(User::class, DenyEverythingPolicy::class);
+        $this->contactsAction(XlsxImportAction::make()->model(Employee::class)->only(['code', 'account.email'])->relations(['account'])->updateBy('code')->authorizeRecords(false));
+
+        $page = $this->upload($this->contacts(), Sheet::csv('code,account email
+E-1,attacker@example.com
+'));
+        $this->assertSame(['code', 'account.email'], array_column($this->mapping($page), 'target'));
+
+        $page->goToWizardStep(3);
+        $this->assertSame(1, $this->preview($page)['failed'], 'The related model\'s update policy said no.');
+        $page->callMountedAction();
+
+        $this->assertSame('admin@example.com', $admin->fresh()->email);
+    }
+
+    public function test_a_has_one_into_a_model_without_a_policy_is_refused_unless_writing_related_is_allowed(): void
+    {
+        $user = User::factory()->create(['email' => 'u@example.com']);
+        $employee = new Employee;
+        $employee->forceFill(['name' => 'Eve', 'code' => 'E-1'])->save();
+        $user->forceFill(['employee_id' => $employee->id])->save();
+        $make = fn (bool $allow) => XlsxImportAction::make()->model(Employee::class)->only(['code', 'account.email'])->relations(['account'])->updateBy('code')->authorizeRecords(false)->allowCreatingRelated($allow);
+
+        $this->contactsAction($make(false));
+        $page = $this->upload($this->contacts(), Sheet::csv('code,account email
+E-1,new@example.com
+'));
+        $this->apply($page);
+        $this->assertSame('u@example.com', $user->fresh()->email);
+
+        $this->contactsAction($make(true));
+        $this->apply($this->upload($this->contacts(), Sheet::csv('code,account email
+E-1,new@example.com
+')));
+        $this->assertSame('new@example.com', $user->fresh()->email, 'With the explicit switch the write goes through.');
+    }
+
+    public function test_a_has_one_with_an_allowing_policy_writes(): void
+    {
+        $user = User::factory()->create(['email' => 'u@example.com']);
+        $employee = new Employee;
+        $employee->forceFill(['name' => 'Eve', 'code' => 'E-1'])->save();
+        $user->forceFill(['employee_id' => $employee->id])->save();
+        Gate::policy(User::class, AllowEverythingPolicy::class);
+        $this->contactsAction(XlsxImportAction::make()->model(Employee::class)->only(['code', 'account.email'])->relations(['account'])->updateBy('code')->authorizeRecords(false));
+
+        $this->apply($this->upload($this->contacts(), Sheet::csv('code,account email
+E-1,new@example.com
+')));
+
+        $this->assertSame('new@example.com', $user->fresh()->email);
+    }
+
     // ---------------------------------------------------------------------------------------------------- H3
 
     private function otherConnection(): void
@@ -414,7 +564,7 @@ class SecurityTest extends TestCase
     public function test_the_connections_of_a_model_and_its_related_models_are_all_involved(): void
     {
         $this->otherConnection();
-        $definition = DefinitionResolver::resolve(OtherWidget::class, null);
+        $definition = DefinitionResolver::resolve(OtherWidget::class, null, null, ['only' => ['name', 'category.name']]);
 
         $this->assertEqualsCanonicalizing(['other', (string) config('database.default')], Connections::names($definition));
     }
@@ -630,6 +780,32 @@ class SecurityTest extends TestCase
         $first = (new SourceFile($path, 'xlsx'))->rows()->current();
 
         $this->assertCount(3, $first);
+    }
+}
+
+final class DenyEverythingPolicy
+{
+    public function create(object $user): bool
+    {
+        return false;
+    }
+
+    public function update(object $user): bool
+    {
+        return false;
+    }
+}
+
+final class AllowEverythingPolicy
+{
+    public function create(object $user): bool
+    {
+        return true;
+    }
+
+    public function update(object $user): bool
+    {
+        return true;
     }
 }
 

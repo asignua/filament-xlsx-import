@@ -10,6 +10,7 @@ use Asignua\FilamentXlsxImport\Data\TargetField;
 use Filament\Actions\Imports\ImportColumn;
 use Filament\Actions\Imports\Importer;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rules\Enum;
 use Illuminate\Validation\Rules\In;
 use LogicException;
@@ -62,7 +63,15 @@ final class DefinitionResolver
         // The key must be something the file may write to, never a hidden way to reach the primary key or a secret.
         $updateBy = is_string($rules['update_by']) && isset($targets[$rules['update_by']]) && !$targets[$rules['update_by']]->isRelation() ? $rules['update_by'] : null;
 
-        return new Definition($model, $importer, $targets, $updateBy, $source !== null || $rules['fields'] !== []);
+        $notice = null;
+
+        if ($importer === null && array_filter($targets, static fn (TargetField $t): bool => !$t->isRelation()) === []) {
+            // The developer declared nothing a file may write to (a fully guarded model): say so, to the developer, not guess.
+            $notice = (string) __('filament-xlsx-import::filament-xlsx-import.notice_no_targets', ['model' => class_basename($model)]);
+            Log::warning("filament-xlsx-import: no import targets for [{$model}]: the model is fully guarded. Declare ->only([...]) or 'targets' in DefinesImport::importRules().");
+        }
+
+        return new Definition($model, $importer, $targets, $updateBy, $source !== null || $rules['fields'] !== [], $notice);
     }
 
     /**

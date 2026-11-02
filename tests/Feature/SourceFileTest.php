@@ -32,7 +32,7 @@ class SourceFileTest extends TestCase
         return new SourceFile($out, 'csv', $info['delimiter']);
     }
 
-    public function test_xlsx_cells_become_strings_like_a_csv_row(): void
+    public function test_xlsx_cells_keep_their_types_and_rows_reads_them_as_text(): void
     {
         $path = $this->tmp('xlsx');
         $writer = new \OpenSpout\Writer\XLSX\Writer;
@@ -46,9 +46,18 @@ class SourceFileTest extends TestCase
         ]));
         $writer->close();
 
-        $rows = iterator_to_array((new SourceFile($path, 'xlsx'))->table(), false);
+        $file = new SourceFile($path, 'xlsx');
+        $typed = iterator_to_array($file->table(), false)[0];
 
-        $this->assertSame(['Name' => 'Ada', 'Qty' => '3', 'Price' => '12.5', 'Active' => '1', 'Day' => '2026-01-31', 'At' => '2026-01-31 09:30:00'], $rows[0]);
+        $this->assertSame('Ada', $typed['Name']);
+        $this->assertSame(3, $typed['Qty']);
+        $this->assertSame(12.5, $typed['Price']);
+        $this->assertTrue($typed['Active']);
+        $this->assertInstanceOf(DateTimeImmutable::class, $typed['Day']);
+        $this->assertSame('2026-01-31', $typed['Day']->format('Y-m-d'));
+
+        // rows() is the text view of the same cells
+        $this->assertSame(['Ada', '3', '12.5', '1', '2026-01-31', '2026-01-31 09:30:00'], iterator_to_array($file->rows(), false)[1]);
     }
 
     public function test_empty_rows_are_skipped_but_row_numbers_stay_the_sheets_own(): void

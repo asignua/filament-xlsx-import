@@ -6,6 +6,7 @@ namespace Asignua\FilamentXlsxImport\Support;
 
 use Asignua\FilamentXlsxImport\Data\Definition;
 use Asignua\FilamentXlsxImport\Data\TargetField;
+use Carbon\Carbon;
 use OpenSpout\Common\Entity\Cell\StringCell;
 use OpenSpout\Common\Entity\Row;
 use OpenSpout\Common\Entity\Style\Color;
@@ -99,6 +100,9 @@ final class TemplateBuilder
         }
     }
 
+    /**
+     * An example that the column's own rule reads back: «12,50» for a decimal-comma rule, «31.01.2026» for `d.m.Y`.
+     */
     private static function example(TargetField $t): string
     {
         if ($t->example !== '') {
@@ -109,13 +113,29 @@ final class TemplateBuilder
             return (string) $t->options[0];
         }
 
+        foreach ($t->casts as $cast) {
+            $format = $cast['arg'] === 'custom' ? $cast['arg2'] : $cast['arg'];
+
+            switch ($cast['type']) {
+                case 'decimal':
+                    return $cast['arg'] === ',' ? '12,50' : '12.50';
+                case 'date':
+                    return Carbon::parse('2026-01-31')->format($format !== '' ? $format : 'Y-m-d');
+                case 'datetime':
+                    return Carbon::parse('2026-01-31 09:30:00')->format($format !== '' ? $format : 'Y-m-d H:i:s');
+                case 'boolean':
+                    return trim(explode(',', $cast['arg'] !== '' ? $cast['arg'] : 'yes')[0]);
+                case 'split':
+                    return 'one'.($cast['arg'] !== '' ? $cast['arg'] : ',').'two';
+            }
+        }
+
         return match ($t->type) {
             'integer' => '1',
             'decimal' => '12.50',
             'boolean' => 'yes',
             'date' => '2026-01-31',
             'datetime' => '2026-01-31 09:30:00',
-            'json' => '{"key": "value"}',
             default => __('filament-xlsx-import::filament-xlsx-import.template.example'),
         };
     }

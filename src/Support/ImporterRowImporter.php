@@ -110,8 +110,7 @@ final class ImporterRowImporter implements RowImporter
                 $row[$entry['header']] = match (true) {
                     $value === null => '',
                     is_array($value) => implode(',', array_map('strval', $value)),
-                    is_bool($value) => $value ? '1' : '0',
-                    default => (string) $value,
+                    default => SourceFile::stringify($value),
                 };
             }
         } catch (CastException $e) {

@@ -66,11 +66,24 @@ final class SourceFile
     }
 
     /**
-     * Every row of a sheet as [source row number => cells], empty rows left out.
+     * Every row of a sheet as [source row number => cells], empty rows left out. Cells are text.
      *
      * @return Generator<int, list<string>>
      */
     public function rows(int $sheetIndex = 0): Generator
+    {
+        foreach ($this->typedRows($sheetIndex) as $number => $cells) {
+            yield $number => array_map(self::stringify(...), $cells);
+        }
+    }
+
+    /**
+     * The same rows with the cells' own types: numbers stay int/float, dates stay DateTimeInterface, booleans bool — so a cast
+     * can tell the number 12.5 from the text «12,5». CSV cells are always text.
+     *
+     * @return Generator<int, list<bool|DateTimeInterface|float|int|string>>
+     */
+    public function typedRows(int $sheetIndex = 0): Generator
     {
         $reader = $this->reader();
 
@@ -87,13 +100,13 @@ final class SourceFile
                 foreach ($sheet->getRowIterator() as $row) {
                     $number++;
                     // A hostile or broken sheet can be thousands of columns wide: read one more than the limit, enough to notice.
-                    $cells = array_map(self::stringify(...), array_slice($row->toArray(), 0, self::maxColumns() + 1));
+                    $cells = array_map(self::native(...), array_slice($row->toArray(), 0, self::maxColumns() + 1));
 
-                    if (array_filter($cells, static fn (string $cell): bool => trim($cell) !== '') === []) {
+                    if (array_filter($cells, static fn (string|int|float|bool|DateTimeInterface $cell): bool => trim(self::stringify($cell)) !== '') === []) {
                         continue;
                     }
 
-                    yield $number => array_values($cells); // @phpstan-ignore arrayValues.list
+                    yield $number => $cells;
                 }
 
                 return;
@@ -105,18 +118,26 @@ final class SourceFile
         }
     }
 
+    public static function native(mixed $value): string|int|float|bool|DateTimeInterface
+    {
+        return match (true) {
+            $value instanceof DateTimeInterface, is_int($value), is_float($value), is_bool($value), is_string($value) => $value,
+            default => self::stringify($value),
+        };
+    }
+
     /**
      * The header row, made unique ("Name", "Name (2)") with blanks named by their column letter, then the data rows keyed by it.
      *
-     * @return Generator<int, array<string, string>> row number => [header => value]
+     * @return Generator<int, array<string, bool|DateTimeInterface|float|int|string>> row number => [header => value]
      */
     public function table(int $sheetIndex = 0): Generator
     {
         $headers = null;
 
-        foreach ($this->rows($sheetIndex) as $number => $cells) {
+        foreach ($this->typedRows($sheetIndex) as $number => $cells) {
             if ($headers === null) {
-                $headers = self::uniqueHeaders($cells);
+                $headers = self::uniqueHeaders(array_map(self::stringify(...), $cells));
 
                 continue;
             }
@@ -171,7 +192,7 @@ final class SourceFile
      * One pass over the sheet: headers, row count, a few sample values and the distinct values
      * (for the enum/boolean value tables) of every column.
      *
-     * @return array{headers: list<string>, rows: int, samples: array<string, list<string>>, distinct: array<string, list<string>>}
+     * @return array{headers: list<string>, rows: int, samples: array<string, list<bool|float|int|string>>, distinct: array<string, list<string>>}
      */
     public function scan(int $sheetIndex = 0, int $sampleCount = 3, int $distinctLimit = 40, int $distinctRows = 5_000, ?int $maxRows = null): array
     {
@@ -181,9 +202,9 @@ final class SourceFile
         $overflow = [];
         $count = 0;
 
-        foreach ($this->rows($sheetIndex) as $cells) {
+        foreach ($this->typedRows($sheetIndex) as $cells) {
             if ($headers === []) {
-                $headers = self::uniqueHeaders($cells);
+                $headers = self::uniqueHeaders(array_map(self::stringify(...), $cells));
                 $samples = array_fill_keys($headers, []);
                 $distinct = array_fill_keys($headers, []);
 
@@ -198,14 +219,18 @@ final class SourceFile
             }
 
             foreach ($headers as $position => $header) {
-                $value = trim($cells[$position] ?? '');
+                $native = $cells[$position] ?? '';
+                $value = trim(self::stringify($native));
 
                 if ($value === '') {
                     continue;
                 }
 
-                if (count($samples[$header]) < $sampleCount && !in_array($value, $samples[$header], true)) {
-                    $samples[$header][] = mb_strimwidth($value, 0, 60, '…');
+                // Samples keep the cell's type (a number stays a number) so the live «sample → result» line casts like the import does.
+                $sample = is_string($native) || $native instanceof DateTimeInterface ? mb_strimwidth($value, 0, 60, '…') : $native;
+
+                if (count($samples[$header]) < $sampleCount && !in_array($sample, $samples[$header], true)) {
+                    $samples[$header][] = $sample;
                 }
 
                 if ($count <= $distinctRows && !isset($overflow[$header]) && !in_array($value, $distinct[$header], true)) {

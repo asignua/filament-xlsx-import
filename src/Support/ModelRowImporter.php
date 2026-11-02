@@ -163,6 +163,12 @@ final class ModelRowImporter implements RowImporter
                 array_unshift($list, 'required');
             }
 
+            // A blank cell means «leave it as it is» (it was never put in the attributes): the rules of a field with no value
+            // do not run — except `required`, which stays what it says.
+            if ($data[$field] === null && !in_array('required', $list, true)) {
+                continue;
+            }
+
             if ($list !== []) {
                 $rules[$field] = $list;
             }
@@ -297,8 +303,11 @@ final class ModelRowImporter implements RowImporter
             $relation = $model->{$name}();
 
             if ($relation instanceof HasOne) {
-                $one = $relation->first() ?? $relation->getRelated()->newInstance();
+                $one = $relation->first();
+                $creating = $one === null;
+                $one ??= $relation->getRelated()->newInstance();
                 $one->forceFill($info['fields']);
+                $this->authorizeRelatedWrite($one, $info['target'], $creating);
                 $relation->save($one);
             } elseif ($relation instanceof BelongsToMany) {
                 $field = array_key_first($info['fields']);
@@ -328,6 +337,22 @@ final class ModelRowImporter implements RowImporter
 
         if (!Gate::forUser($this->user)->allows($ability, $subject)) {
             throw new RowFailed(__('filament-xlsx-import::filament-xlsx-import.row.unauthorized'));
+        }
+    }
+
+    /**
+     * Writing into a related record (hasOne) is a write to that model: its `update` policy for an existing one, the create
+     * rules for a new one — or the explicit `->allowCreatingRelated()`.
+     */
+    private function authorizeRelatedWrite(Model $related, TargetField $target, bool $creating): void
+    {
+        $allowed = $creating
+            ? $this->mayCreate($target)
+            : (($this->spec['allow_create_related'] ?? false) === true
+                || ($this->user !== null && Gate::getPolicyFor($related) !== null && Gate::forUser($this->user)->allows('update', $related)));
+
+        if (!$allowed) {
+            throw new RowFailed(__('filament-xlsx-import::filament-xlsx-import.row.related_unauthorized', ['relation' => $target->label]));
         }
     }
 

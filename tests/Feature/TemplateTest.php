@@ -32,7 +32,8 @@ class TemplateTest extends TestCase
         $this->assertNotContains('Id', $rows[0], 'The primary key is not part of a template.');
         $this->assertNotContains('Tags → Name', array_slice($rows[0], 0, 0));
         $this->assertSame(count($rows[0]), count($rows[1]));
-        $this->assertSame('2026-01-31', $rows[1][array_search('Released At', $rows[0], true)]);
+        $this->assertSame('31.01.2026', $rows[1][array_search('Released At', $rows[0], true)], 'The example is written the way the rule reads it (d.m.Y).');
+        $this->assertSame('12,50', $rows[1][array_search('Price', $rows[0], true)], 'A decimal-comma rule gets a decimal-comma example.');
     }
 
     public function test_the_example_row_can_be_left_out(): void

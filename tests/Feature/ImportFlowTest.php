@@ -269,7 +269,7 @@ class ImportFlowTest extends TestCase
 
         $this->assertSame('status', $status['target']);
         $this->assertSame('enum', $status['casts'][0]['type']);
-        $this->assertSame([['from' => 'Активний', 'to' => ''], ['from' => 'В архіві', 'to' => '']], $status['casts'][0]['map'], 'Every distinct value of the file is listed for the user to map.');
+        $this->assertSame([['from' => 'Активний', 'to' => ''], ['from' => 'В архіві', 'to' => '']], array_map(fn (array $row): array => ['from' => $row['from'], 'to' => $row['to']], $status['casts'][0]['map']), 'Every distinct value of the file is listed for the user to map.');
 
         $this->remap($page, ['Status' => ['casts' => [['type' => 'enum', 'arg' => ProductStatus::class, 'arg2' => '', 'map' => [['from' => 'Активний', 'to' => 'active'], ['from' => 'В архіві', 'to' => 'archived']]]]]]);
         $this->apply($page);

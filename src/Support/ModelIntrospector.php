@@ -53,14 +53,15 @@ final class ModelIntrospector
         foreach (self::columns($model) as $column) {
             $name = $column['name'];
 
-            if (!self::attributeAllowed($model, $name, $only, $except)) {
-                continue;
-            }
-
             $type = self::columnKind($column);
             $cast = is_string($casts[$name] ?? null) ? $casts[$name] : null;
             $enum = $cast !== null && enum_exists($cast) ? $cast : null;
             $suggested = CastPipeline::suggest($cast, $type);
+
+            // «json» may come from the cast only (SQLite stores json as text): the cast counts.
+            if (!self::attributeAllowed($model, $name, $only, $except, self::kindOf($suggested, $type))) {
+                continue;
+            }
 
             $targets[$name] = new TargetField(
                 key: $name,
@@ -77,17 +78,20 @@ final class ModelIntrospector
                 continue;
             }
 
+            // The related model's own declaration decides what may be written into it (same rules as for the main model),
+            // unless the developer listed `relation.field` explicitly.
             $columns = array_values(array_filter(
                 self::columns($related),
                 static fn (array $c): bool => self::columnKind($c) === 'string'
-                    && !in_array($c['name'], [...self::SKIPPED, $related->getKeyName(), ...$related->getHidden()], true)
-                    && !self::sensitiveName($c['name']),
+                    && ($only !== null
+                        ? in_array($relationName.'.'.$c['name'], $only, true)
+                        : self::attributeAllowed($related, $c['name'], null, [], self::columnKind($c))),
             ));
 
             foreach (array_slice($columns, 0, 8) as $column) {
                 $key = $relationName.'.'.$column['name'];
 
-                if ($only !== null && !in_array($key, $only, true) && !in_array($relationName, $relationAllowlist, true)) {
+                if ($only !== null && !in_array($key, $only, true)) {
                     continue;
                 }
 
@@ -115,10 +119,14 @@ final class ModelIntrospector
     }
 
     /**
+     * Follows what the developer declared: `$fillable` if there is one; a totally guarded model (the Eloquent default, or
+     * `$guarded = ['*']`) offers NOTHING until `->only()` / `targets` say so; otherwise every column that is not guarded.
+     * The deny-list (key, hidden, secrets, tenant, JSON, `*_id` keys) applies on top as defence in depth.
+     *
      * @param list<string>|null $only
      * @param list<string>      $except
      */
-    private static function attributeAllowed(Model $model, string $name, ?array $only, array $except): bool
+    private static function attributeAllowed(Model $model, string $name, ?array $only, array $except, string $kind = 'string'): bool
     {
         if (in_array($name, $except, true)) {
             return false;
@@ -133,9 +141,18 @@ final class ModelIntrospector
             return false;
         }
 
+        // Structured data and foreign keys are reached through the relation lookup, not as raw attributes.
+        if ($kind === 'json' || ($kind === 'integer' && str_ends_with($name, '_id'))) {
+            return false;
+        }
+
         $fillable = $model->getFillable();
 
-        return $fillable === [] || in_array($name, $fillable, true);
+        if ($fillable !== []) {
+            return in_array($name, $fillable, true);
+        }
+
+        return !$model->totallyGuarded() && !in_array($name, $model->getGuarded(), true);
     }
 
     /**
@@ -170,12 +187,24 @@ final class ModelIntrospector
             }
         }
 
+        // The account model of the app (what people log in as) is as privileged as a role.
+        foreach ((array) config('auth.providers', []) as $provider) {
+            $class = is_array($provider) ? ($provider['model'] ?? null) : null;
+
+            if (is_string($class) && $class !== '' && $related instanceof $class) {
+                return true;
+            }
+        }
+
         return in_array(strtolower($relation), ['roles', 'role', 'permissions', 'permission'], true)
             || in_array($related->getTable(), ['roles', 'permissions'], true);
     }
 
     public static function sensitiveName(string $name): bool
     {
+        // camelCase attributes (apiToken, isAdmin) are read as their snake_case form.
+        $name = Str::snake($name);
+
         return (bool) preg_match('/password|passwd|^secret$|_secret$|^token$|_token$|^api_key$|^two_factor|^otp|^remember_token$|^(is_)?(super_?)?admin$|^is_(staff|root|owner)$|^roles?(_id)?$|^permissions?$/i', $name);
     }
 
@@ -242,7 +271,7 @@ final class ModelIntrospector
 
         return match (true) {
             str_contains($type, 'tinyint(1)'), in_array($name, ['bool', 'boolean'], true) => 'boolean',
-            in_array($name, ['int', 'integer', 'bigint', 'smallint', 'mediumint', 'tinyint', 'int4', 'int8'], true) => 'integer',
+            in_array($name, ['int', 'integer', 'bigint', 'smallint', 'mediumint', 'tinyint', 'int2', 'int4', 'int8', 'serial', 'bigserial'], true) => 'integer',
             in_array($name, ['decimal', 'numeric', 'float', 'double', 'real', 'float4', 'float8'], true) => 'decimal',
             $name === 'date' => 'date',
             in_array($name, ['datetime', 'timestamp', 'timestamptz'], true) => 'datetime',

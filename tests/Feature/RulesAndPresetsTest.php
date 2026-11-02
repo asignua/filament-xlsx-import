@@ -68,11 +68,11 @@ class RulesAndPresetsTest extends TestCase
 
     public function test_a_rule_can_be_changed_for_one_run(): void
     {
-        $file = fn () => Sheet::xlsx([['Артикул', 'Назва', 'Ціна'], ['A', 'Alpha', '1234.5'], ['B', 'Beta', '1,234.5']]);
+        $file = fn () => Sheet::xlsx([['Артикул', 'Назва', 'Ціна'], ['A', 'Alpha', '1234.5'], ['B', 'Beta', '99.5']]);
 
-        // The model's rule reads «,» as the decimal separator, so 1234.5 would silently become 12345.
-        $this->apply($this->upload($this->products(), $file()));
-        $this->assertSame('12345.00', Product::query()->where('sku', 'A')->value('price'));
+        // The model's rule says «,» is the decimal separator: a text «1234.5» is not guessed at, the row fails.
+        $page = $this->upload($this->products(), $file())->goToWizardStep(3);
+        $this->assertSame(2, $this->preview($page)['failed']);
 
         // This run's file uses «.»: the override fixes it for this run only.
         $page = $this->upload($this->products(), $file());
@@ -80,7 +80,7 @@ class RulesAndPresetsTest extends TestCase
         $this->apply($page);
 
         $this->assertSame('1234.50', Product::query()->where('sku', 'A')->value('price'));
-        $this->assertSame('1234.50', Product::query()->where('sku', 'B')->value('price'));
+        $this->assertSame('99.50', Product::query()->where('sku', 'B')->value('price'));
     }
 
     public function test_changing_a_rule_for_one_run_does_not_touch_the_next_one(): void

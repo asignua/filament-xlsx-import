@@ -46,6 +46,37 @@ final class Sheet
         return UploadedFile::fake()->createWithContent($name, $content);
     }
 
+    /**
+     * A workbook written with REAL typed cells, the way a spreadsheet app saves it: numbers are numeric cells, dates are date cells
+     * with a date number format, text is text. (`xlsx()` writes numbers typed too but dates as bare serials.)
+     *
+     * @param list<list<mixed>> $rows
+     */
+    public static function typed(array $rows, string $format = 'xlsx'): UploadedFile
+    {
+        $path = tempnam(sys_get_temp_dir(), 'xi-').'.'.$format;
+        $writer = $format === 'ods' ? new \OpenSpout\Writer\ODS\Writer : new Writer;
+        $writer->openToFile($path);
+        $date = (new \OpenSpout\Common\Entity\Style\Style)->setFormat('dd.mm.yyyy');
+        $dateTime = (new \OpenSpout\Common\Entity\Style\Style)->setFormat('dd.mm.yyyy hh:mm');
+
+        foreach ($rows as $row) {
+            $writer->addRow(new Row(array_map(static function (mixed $value) use ($date, $dateTime): \OpenSpout\Common\Entity\Cell {
+                if ($value instanceof \DateTimeInterface) {
+                    return new \OpenSpout\Common\Entity\Cell\DateTimeCell($value, $value->format('H:i:s') === '00:00:00' ? $date : $dateTime);
+                }
+
+                return \OpenSpout\Common\Entity\Cell::fromValue($value);
+            }, $row)));
+        }
+
+        $writer->close();
+        $content = (string) file_get_contents($path);
+        @unlink($path);
+
+        return UploadedFile::fake()->createWithContent('typed.'.$format, $content);
+    }
+
     public static function csv(string $content, string $name = 'data.csv'): UploadedFile
     {
         return UploadedFile::fake()->createWithContent($name, $content);

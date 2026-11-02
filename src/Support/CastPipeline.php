@@ -6,6 +6,7 @@ namespace Asignua\FilamentXlsxImport\Support;
 
 use BackedEnum;
 use Carbon\Carbon;
+use DateTimeInterface;
 use Throwable;
 use UnitEnum;
 
@@ -17,6 +18,10 @@ use UnitEnum;
 final class CastPipeline
 {
     public const array TYPES = ['trim', 'string', 'upper', 'lower', 'integer', 'decimal', 'boolean', 'date', 'datetime', 'enum', 'json', 'split', 'default', 'regex', 'null_if_empty'];
+
+    public const array DATE_FORMATS = ['d.m.Y', 'm/d/Y', 'Y-m-d', 'd/m/Y', 'd-m-Y'];
+
+    public const array DATETIME_FORMATS = ['d.m.Y H:i', 'm/d/Y H:i', 'Y-m-d H:i:s', 'd/m/Y H:i', 'd.m.Y H:i:s'];
 
     public const string TRUTHY = '1,true,yes,y,on,так,т,+,да,ja,tak,oui,si,sí';
 
@@ -88,16 +93,16 @@ final class CastPipeline
 
         return match ($step['type']) {
             'trim' => is_string($value) ? trim(str_replace("\u{A0}", ' ', $value)) : $value,
-            'string' => is_array($value) ? implode(',', $value) : (string) ($value ?? ''),
+            'string' => self::text($value),
             'upper' => is_string($value) ? mb_strtoupper($value) : $value,
             'lower' => is_string($value) ? mb_strtolower($value) : $value,
             'null_if_empty' => $blank ? null : $value,
             'default' => $blank ? $step['arg'] : $value,
             'integer' => $blank ? null : self::integer($value),
-            'decimal' => $blank ? null : self::decimal($value, $step['arg']),
+            'decimal' => $blank ? null : self::decimal($value, $step['arg'], $step['arg2']),
             'boolean' => $blank ? null : self::boolean($value, $step),
-            'date' => $blank ? null : self::date($value, $step['arg'], false),
-            'datetime' => $blank ? null : self::date($value, $step['arg'], true),
+            'date' => $blank ? null : self::date($value, $step['arg'], $step['arg2'], false),
+            'datetime' => $blank ? null : self::date($value, $step['arg'], $step['arg2'], true),
             'enum' => $blank ? null : self::enum($value, $step),
             'json' => $blank ? null : self::json($value),
             'split' => $blank ? [] : self::split($value, $step['arg']),
@@ -108,30 +113,102 @@ final class CastPipeline
 
     private static function clean(mixed $value): string
     {
-        return trim(str_replace(["\u{A0}", "\u{202F}", ' '], '', (string) $value));
+        return trim(str_replace(["\u{A0}", "\u{202F}", ' '], '', self::text($value)));
+    }
+
+    /**
+     * A cell as text: numbers without an exponent, dates as `Y-m-d[ H:i:s]`, booleans as 1/0.
+     */
+    private static function text(mixed $value): string
+    {
+        return is_array($value) ? implode(',', array_map(self::text(...), $value)) : SourceFile::stringify($value);
     }
 
     private static function integer(mixed $value): int
     {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_float($value) && floor($value) === $value) {
+            return (int) $value;
+        }
+
         $clean = self::clean($value);
 
         if (!preg_match('/^[+-]?\d+([.,]0+)?$/', $clean)) {
-            throw new CastException(__('filament-xlsx-import::filament-xlsx-import.cast.not_integer', ['value' => (string) $value]));
+            throw new CastException(__('filament-xlsx-import::filament-xlsx-import.cast.not_integer', ['value' => self::text($value)]));
         }
 
         return (int) preg_replace('/[.,]0+$/', '', $clean);
     }
 
-    private static function decimal(mixed $value, string $separator): string
+    /**
+     * A real number cell (int/float) is a number: no separator is parsed out of it. Text is parsed by what the rule declares:
+     * `arg` the decimal separator (`.`, `,`, empty = auto), `arg2` the thousands separator (`.`, `,`, `space`, `none`, empty = not declared).
+     * A text where the separator could be either (`1,234`, `12.5` under a comma rule) is refused instead of guessed.
+     */
+    private static function decimal(mixed $value, string $decimal, string $thousands = ''): string
     {
-        $separator = $separator === ',' ? ',' : '.';
+        if (is_int($value) || is_float($value)) {
+            return SourceFile::stringify($value);
+        }
+
         $clean = self::clean($value);
-        $thousands = $separator === ',' ? '.' : ',';
-        $clean = str_replace($thousands, '', $clean);
-        $clean = str_replace($separator, '.', $clean);
+        $decimal = in_array($decimal, ['.', ','], true) ? $decimal : '';
+        $thousands = in_array($thousands, ['.', ',', 'space', 'none'], true) ? $thousands : '';
+        $ambiguous = new CastException(__('filament-xlsx-import::filament-xlsx-import.cast.ambiguous_decimal', ['value' => self::text($value)]));
+
+        if ($thousands !== '') {
+            $group = match ($thousands) {
+                'none', 'space' => '',
+                default => $thousands,
+            };
+            $clean = $group !== '' ? str_replace($group, '', $clean) : $clean;
+            $clean = str_replace($decimal === ',' ? ',' : '.', '.', $clean);
+        } else {
+            $dots = substr_count($clean, '.');
+            $commas = substr_count($clean, ',');
+
+            if ($dots > 0 && $commas > 0) {
+                $last = strrpos($clean, '.') > strrpos($clean, ',') ? '.' : ',';
+                $other = $last === '.' ? ',' : '.';
+
+                if (substr_count($clean, $last) !== 1 || ($decimal !== '' && $decimal !== $last)) {
+                    throw $ambiguous;
+                }
+
+                $clean = str_replace($last, '.', str_replace($other, '', $clean));
+            } elseif ($dots + $commas > 0) {
+                $char = $dots > 0 ? '.' : ',';
+                $count = max($dots, $commas);
+
+                if ($count > 1) {
+                    // 1.234.567 — a grouping; the same char twice can never be a decimal point.
+                    if ($decimal === $char) {
+                        throw $ambiguous;
+                    }
+
+                    $clean = str_replace($char, '', $clean);
+                } elseif ($decimal !== '') {
+                    if ($char !== $decimal) {
+                        throw $ambiguous;
+                    }
+
+                    $clean = str_replace($char, '.', $clean);
+                } else {
+                    // Auto: 12,5 and 12.50 are decimals; exactly three digits after a lone separator (1,234) could be a thousands mark.
+                    if (strlen(substr($clean, (int) strrpos($clean, $char) + 1)) === 3) {
+                        throw $ambiguous;
+                    }
+
+                    $clean = str_replace($char, '.', $clean);
+                }
+            }
+        }
 
         if (!preg_match('/^[+-]?(\d+(\.\d*)?|\.\d+)$/', $clean)) {
-            throw new CastException(__('filament-xlsx-import::filament-xlsx-import.cast.not_decimal', ['value' => (string) $value]));
+            throw new CastException(__('filament-xlsx-import::filament-xlsx-import.cast.not_decimal', ['value' => self::text($value)]));
         }
 
         return $clean;
@@ -142,23 +219,40 @@ final class CastPipeline
      */
     private static function boolean(mixed $value, array $step): bool
     {
-        $word = mb_strtolower(trim((string) $value));
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        $word = mb_strtolower(trim(self::text($value)));
         $truthy = array_map('trim', explode(',', mb_strtolower($step['arg'] !== '' ? $step['arg'] : self::TRUTHY)));
         $falsy = array_map('trim', explode(',', mb_strtolower($step['arg2'] !== '' ? $step['arg2'] : self::FALSY)));
 
         return match (true) {
             in_array($word, $truthy, true) => true,
             in_array($word, $falsy, true) => false,
-            default => throw new CastException(__('filament-xlsx-import::filament-xlsx-import.cast.not_boolean', ['value' => (string) $value])),
+            default => throw new CastException(__('filament-xlsx-import::filament-xlsx-import.cast.not_boolean', ['value' => self::text($value)])),
         };
     }
 
-    private static function date(mixed $value, string $format, bool $time): string
+    /**
+     * A real date cell, an ISO date or an Excel serial is taken as it is — whatever format the rule declares for TEXT dates.
+     */
+    private static function date(mixed $value, string $format, string $custom, bool $time): string
     {
-        $text = trim((string) $value);
+        $format = $format === 'custom' ? $custom : $format;
+
+        if ($value instanceof DateTimeInterface) {
+            return Carbon::instance($value)->format($time ? 'Y-m-d H:i:s' : 'Y-m-d');
+        }
+
+        $text = trim(self::text($value));
 
         try {
-            if ($format !== '') {
+            if (is_numeric($text) && (float) $text > 20_000 && (float) $text < 80_000) {
+                $carbon = Carbon::parse('1899-12-30')->addSeconds((int) round(((float) $text) * 86_400));
+            } elseif (preg_match('/^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?$/', $text) === 1) {
+                $carbon = Carbon::parse($text);
+            } elseif ($format !== '') {
                 $carbon = Carbon::createFromFormat($format, $text);
                 $errors = Carbon::getLastErrors();
 
@@ -166,9 +260,7 @@ final class CastPipeline
                     throw new CastException('format');
                 }
             } else {
-                $carbon = is_numeric($text) && (float) $text > 20_000 && (float) $text < 80_000
-                    ? Carbon::parse('1899-12-30')->addDays((int) $text)
-                    : Carbon::parse($text);
+                $carbon = Carbon::parse($text);
             }
         } catch (Throwable) {
             throw new CastException(__('filament-xlsx-import::filament-xlsx-import.cast.not_date', ['value' => $text, 'format' => $format !== '' ? $format : 'auto']));
@@ -182,7 +274,7 @@ final class CastPipeline
      */
     private static function enum(mixed $value, array $step): string|int
     {
-        $text = trim((string) $value);
+        $text = trim(self::text($value));
         $table = [];
 
         foreach ($step['map'] as $from => $to) {
@@ -208,6 +300,27 @@ final class CastPipeline
         }
 
         throw new CastException(__('filament-xlsx-import::filament-xlsx-import.cast.unknown_value', ['value' => $text]));
+    }
+
+    /**
+     * The cases of an enum as value => label (`HasLabel`/`getLabel()` when it has one, else the case name).
+     *
+     * @return array<string, string>
+     */
+    public static function enumChoices(string $class): array
+    {
+        if ($class === '' || !enum_exists($class)) {
+            return [];
+        }
+
+        $choices = [];
+
+        foreach ($class::cases() as $case) {
+            $label = method_exists($case, 'getLabel') ? $case->getLabel() : null;
+            $choices[(string) ($case instanceof BackedEnum ? $case->value : $case->name)] = is_string($label) ? $label : (is_object($label) && method_exists($label, '__toString') ? (string) $label : $case->name);
+        }
+
+        return $choices;
     }
 
     public static function enumValue(string $class, string $text): string|int|null

@@ -65,7 +65,7 @@ class CastPipelineTest extends TestCase
         yield 'decimal' => ['1x', ['decimal']];
         yield 'boolean' => ['maybe', ['boolean']];
         yield 'date' => ['not a date', ['date']];
-        yield 'date wrong format' => ['2026-01-31', [['type' => 'date', 'arg' => 'd.m.Y']]];
+        yield 'date wrong format' => ['31/01/2026', [['type' => 'date', 'arg' => 'd.m.Y']]];
         yield 'json' => ['{oops', ['json']];
         yield 'enum' => ['zzz', [['type' => 'enum', 'arg' => ProductStatus::class]]];
     }

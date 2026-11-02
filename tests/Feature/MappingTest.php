@@ -6,7 +6,6 @@ namespace Asignua\FilamentXlsxImport\Tests\Feature;
 
 use Asignua\FilamentXlsxImport\Support\DefinitionResolver;
 use Asignua\FilamentXlsxImport\Support\Mapping;
-use Asignua\FilamentXlsxImport\Support\ModelIntrospector;
 use Asignua\FilamentXlsxImport\Tests\TestCase;
 use Workbench\App\Enums\ProductStatus;
 use Workbench\App\Import\ContactImporter;
@@ -17,7 +16,7 @@ class MappingTest extends TestCase
 {
     public function test_targets_come_from_the_database_the_casts_and_the_relations(): void
     {
-        $targets = ModelIntrospector::targets(Product::class, ['relations' => ['tags']]);
+        $targets = DefinitionResolver::resolve(Product::class, null)->targets;
 
         $this->assertArrayHasKey('sku', $targets);
         $this->assertArrayHasKey('price', $targets);
@@ -147,7 +146,10 @@ class MappingTest extends TestCase
 
         $mapping = Mapping::initial($definition, ['status'], ['status' => ['Active', 'Згорнуто']], ['status' => ['Active', 'Згорнуто']]);
 
-        $this->assertSame([['from' => 'Active', 'to' => ProductStatus::Active->value], ['from' => 'Згорнуто', 'to' => '']], $mapping[0]['casts'][0]['map']);
+        $map = $mapping[0]['casts'][0]['map'];
+
+        $this->assertSame([['Active', ProductStatus::Active->value], ['Згорнуто', '']], array_map(fn (array $r): array => [$r['from'], $r['to']], $map));
+        $this->assertSame(['draft' => 'Draft', 'active' => 'Active', 'archived' => 'Archived'], $map[0]['choices'], 'The «Imported as» select offers the cases with their labels.');
     }
 
     public function test_the_form_state_is_cleaned_into_entries(): void

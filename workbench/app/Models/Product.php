@@ -49,8 +49,9 @@ class Product extends Model implements DefinesImport
     {
         return [
             'update_by' => 'sku',
+            // The model is fully guarded (mass assignment off), so it must say what a file may write to.
+            'targets' => ['sku', 'name', 'price', 'stock', 'status', 'is_featured', 'released_at', 'notes', 'category.name', 'tags.name'],
             'relations' => ['tags'],
-            'except' => ['team_id', 'category_id'],
             'fields' => [
                 'sku' => ['aliases' => ['article', 'артикул', 'код'], 'casts' => ['trim', 'upper'], 'rules' => ['required', 'max:40'], 'required' => true],
                 'name' => ['aliases' => ['назва', 'product'], 'rules' => ['required']],

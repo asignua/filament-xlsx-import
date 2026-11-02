@@ -23,7 +23,7 @@ final class Mapping
 
     /**
      * @param list<string>                    $headers
-     * @param array<string, list<string>>     $samples
+     * @param array<string, list<mixed>>      $samples
      * @param array<string, list<string>>     $distinct
      * @param list<array<string, mixed>>|null $preset   saved entries, matched by header
      *
@@ -46,9 +46,6 @@ final class Mapping
         foreach ($headers as $index => $header) {
             $saved = $byHeader[self::normalize($header)] ?? null;
             $ruleTarget = $auto[$index] ?? null;
-            $rule = $ruleTarget !== null && $definition->target($ruleTarget)?->fromRules
-                ? self::defaults($definition->targets[$ruleTarget], $distinct[$header] ?? [])
-                : null;
 
             if ($saved !== null && (($saved['target'] ?? null) === null || $definition->target((string) $saved['target']) !== null)) {
                 $target = $saved['target'] ?? null;
@@ -61,7 +58,7 @@ final class Mapping
                 $origin = 'preset';
             } elseif ($ruleTarget !== null) {
                 $entry = self::defaults($definition->targets[$ruleTarget], $distinct[$header] ?? []);
-                $origin = $rule !== null ? 'rules' : 'auto';
+                $origin = $definition->targets[$ruleTarget]->fromRules ? 'rules' : 'auto';
             } else {
                 $entry = ['target' => null, 'casts' => [], 'mode' => 'lookup', 'many' => 'add'];
                 $origin = 'none';
@@ -74,6 +71,15 @@ final class Mapping
                 } else {
                     $used[$entry['target']] = true;
                 }
+            }
+
+            // The model's rule for the CHOSEN target — however it was chosen (name match, preset, by hand later): that is what
+            // «from model rules» and «reset» refer to.
+            $chosen = is_string($entry['target']) ? $definition->target($entry['target']) : null;
+            $rule = $chosen !== null && $chosen->fromRules ? self::defaults($chosen, $distinct[$header] ?? []) : null;
+
+            if ($origin === 'rules' && $rule === null) {
+                $origin = 'auto';
             }
 
             $entries[] = $entry + [
@@ -117,8 +123,10 @@ final class Mapping
         return array_map(static function (array $cast): array {
             $rows = [];
 
+            $choices = $cast['type'] === 'enum' ? CastPipeline::enumChoices($cast['arg']) : [];
+
             foreach ($cast['map'] as $from => $to) {
-                $rows[] = ['from' => (string) $from, 'to' => $to];
+                $rows[] = ['from' => (string) $from, 'to' => $to, 'choices' => $choices];
             }
 
             return ['map' => $rows] + $cast;
@@ -208,7 +216,7 @@ final class Mapping
             foreach ([0, 1, 2] as $tier) {
                 foreach ($tiers[$tier] as $key => $names) {
                     foreach ($names as $name) {
-                        if (!isset($taken[$key]) && mb_strlen($name) >= 4 && str_starts_with($needle, $name)) {
+                        if (!isset($taken[$key]) && mb_strlen($name) >= ($tier === 1 ? 3 : 4) && str_starts_with($needle, $name)) {
                             $result[$index] = $key;
                             $taken[$key] = true;
 

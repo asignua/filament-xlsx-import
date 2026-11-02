@@ -26,7 +26,7 @@ final class FailedRowsWriter
     public function __construct(private readonly string $path, private readonly array $headers) {}
 
     /**
-     * @param array<string, string> $row
+     * @param array<string, mixed> $row
      */
     public function add(int $number, array $row, string $message): void
     {
@@ -46,7 +46,7 @@ final class FailedRowsWriter
         $cells = [(string) $number];
 
         foreach ($this->headers as $header) {
-            $cells[] = (string) ($row[$header] ?? '');
+            $cells[] = SourceFile::stringify($row[$header] ?? '');
         }
 
         $cells[] = $message;

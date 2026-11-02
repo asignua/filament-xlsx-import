@@ -7,9 +7,9 @@ namespace Workbench\App\Models;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * No import rules at all: the zero-config case. Mass assignment is off, as in a repository-style app.
+ * No import rules at all: the zero-config case (`$guarded = []`, so every column that is not a key/secret is offered).
  */
 class Contact extends Model
 {
-    protected $guarded = ['*'];
+    protected $guarded = [];
 }

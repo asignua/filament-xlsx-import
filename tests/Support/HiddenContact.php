@@ -10,7 +10,7 @@ class HiddenContact extends Model
 {
     protected $table = 'contacts';
 
-    protected $guarded = ['*'];
+    protected $guarded = [];
 
     protected $hidden = ['phone'];
 }

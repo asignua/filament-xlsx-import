@@ -17,7 +17,7 @@ class OtherWidget extends Model
 
     protected $table = 'widgets';
 
-    protected $guarded = ['*'];
+    protected $guarded = [];
 
     /**
      * @return BelongsTo<Category, $this>

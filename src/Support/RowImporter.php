@@ -7,7 +7,7 @@ namespace Asignua\FilamentXlsxImport\Support;
 interface RowImporter
 {
     /**
-     * @param array<string, string> $row header => cell
+     * @param array<string, mixed> $row header => cell (native types: numbers, dates, booleans, text)
      */
     public function process(array $row, int $number): RowOutcome;
 

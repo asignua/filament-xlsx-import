@@ -4,7 +4,7 @@
         .xi-source { display: flex; flex-direction: column; gap: .35rem; }
         .xi-header { font-weight: 600; font-size: .95rem; word-break: break-word; }
         .xi-samples { display: flex; flex-wrap: wrap; gap: .25rem; }
-        .xi-chip { font-size: .75rem; padding: .05rem .5rem; border-radius: .4rem; background: color-mix(in oklab, currentColor 8%, transparent); max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .xi-chip { font-size: .75rem; padding: .05rem .5rem; border-radius: .4rem; background: color-mix(in oklab, currentColor 8%, transparent); max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
         .xi-badge { display: inline-flex; align-items: center; gap: .25rem; font-size: .7rem; font-weight: 600; padding: .1rem .55rem; border-radius: 999px; width: fit-content; }
         .xi-badge-rule { background: color-mix(in oklab, var(--primary-500, #f59e0b) 18%, transparent); color: var(--primary-700, #b45309); }
         .xi-badge-changed { background: color-mix(in oklab, #f59e0b 20%, transparent); color: #b45309; }
@@ -30,6 +30,10 @@
         .xi-casts .fi-fo-repeater-item-header { position: absolute; top: .4rem; right: .4rem; padding: 0; margin: 0; border: 0; background: none; z-index: 2; min-height: 0; }
         .xi-casts .fi-fo-repeater-item-content { padding: .6rem 2.4rem .6rem .75rem; }
         .xi-casts .fi-fo-repeater-items { gap: .5rem; }
+        .xi-sticky { position: sticky; top: 0; z-index: 5; padding: .4rem .75rem; border-radius: .5rem; background: color-mix(in oklab, Canvas 94%, currentColor 6%); backdrop-filter: blur(4px); font-weight: 600; }
+        .xi-wrap { overflow-wrap: anywhere; word-break: break-word; }
+        .xi-sample { font-family: ui-monospace, monospace; font-size: .8rem; overflow-wrap: anywhere; }
+        .xi-chip { overflow-wrap: anywhere; }
         .xi-note { font-size: .85rem; opacity: .8; }
     </style>
 @endonce
