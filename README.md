@@ -345,7 +345,7 @@ the report route, schedule, CSV fallback encodings and delimiters, presets, defi
 | Queue for big files + notification | yes (one chunked job) | via Laravel Excel's queue | no |
 | Failed-rows report as `.xlsx` | yes (text-only cells) | no | yes |
 | Saved presets | yes | no | no |
-| Interface languages | en, uk | — | 63 |
+| Interface languages | 10 (de, en, es, fr, it, nl, pl, pt_BR, tr, uk) | — | 63 |
 
 The other two columns are my reading of their READMEs in November 2026 — check them for changes. Be fair to them: `eightynine/filament-excel-import` is the simplest thing that works
 (one line, columns by header, a sample file) and has a long list of per-import closures (below) that this plugin deliberately does not copy; `romansulzhyk/filament-import` has far more interface translations

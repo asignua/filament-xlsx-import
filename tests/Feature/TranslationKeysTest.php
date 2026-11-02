@@ -28,7 +28,7 @@ class TranslationKeysTest extends TestCase
             }
         }
 
-        foreach (['en', 'uk'] as $locale) {
+        foreach (['en', 'de', 'es', 'fr', 'it', 'nl', 'pl', 'pt_BR', 'tr', 'uk'] as $locale) {
             $have = Arr::dot(require __DIR__.'/../../resources/lang/'.$locale.'/filament-xlsx-import.php');
 
             foreach (array_unique($used) as $key) {

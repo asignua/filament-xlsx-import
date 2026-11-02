@@ -2,6 +2,14 @@
 
 All notable changes to `asignua/filament-xlsx-import` are documented here.
 
+## v1.0.1 - 2026-11-02
+
+- Formula cells import the result the spreadsheet app cached next to the formula, not the formula text (`=+380501112233`, `=COUNTIF(…)`); a formula with no cached result is an empty cell. Duration cells (`[h]:mm:ss`) read as `36:30:00` instead of blank.
+- The sheet picker lists and searches every sheet of the workbook.
+- The failed-row preview tallies the reasons and says when rows are hidden («showing N of M»).
+- README: note that PHP's `upload_max_filesize` / `post_max_size` and Livewire's temporary-upload rule must be at least as large as `maxFileSize`.
+- Translations: German, Spanish, French, Italian, Dutch, Polish, Brazilian Portuguese, Turkish.
+
 ## v1.0.0
 
 First release.
@@ -19,8 +27,6 @@ First release.
 - Template download with real dropdowns for enum / `in:` columns.
 - `->saveUsing()` for repository-only apps, `->authorizeRecords()`, file size and row limits.
 - English and Ukrainian translations. Tested on Filament 5.11.
-
-- Formula cells import the result the spreadsheet app cached next to the formula, not the formula text (`=+380501112233`, `=COUNTIF(…)`); a formula with no cached result is an empty cell. Duration cells (`[h]:mm:ss`) read as `36:30:00` instead of blank.
 
 Security hardening (from an independent review, before the first tag):
 
