@@ -87,6 +87,8 @@ return [
     'preview_values' => 'Values',
     'preview_reason' => 'Reason',
     'preview_errors_note' => 'Failed rows are skipped and listed, with the reason, in a downloadable report.',
+    'preview_other_reasons' => 'other reasons',
+    'preview_errors_more' => 'Showing the first :shown of :total failing rows — the full list is in the failed-rows report you can download after the import.',
     'done_title' => 'Import finished',
     'done_body' => ':created created, :updated updated, :skipped skipped, :failed failed.',
     'download_report' => 'Download failed rows',

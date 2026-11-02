@@ -16,6 +16,15 @@ use Throwable;
  */
 final class ImportRunner
 {
+    /** Failed rows kept as a sample. */
+    public const ERROR_SAMPLE = 20;
+
+    /** Distinct failure messages tallied; later ones go to the «other» bucket. */
+    public const ERROR_REASONS = 20;
+
+    /** Key of the bucket for reasons beyond the cap (rendered as a translated label). */
+    public const OTHER_REASONS = '__other__';
+
     /**
      * @param array<string, mixed>                                                                                          $spec
      * @param Closure(array<string, mixed>, ?\Illuminate\Database\Eloquent\Model, ImportContext): mixed|null                $saveUsing
@@ -55,7 +64,7 @@ final class ImportRunner
         $chunk = max(1, (int) config('filament-xlsx-import.chunk_size', 200));
 
         $result = ['created' => 0, 'updated' => 0, 'skipped' => 0, 'failed' => 0, 'processed' => 0, 'total' => $total, 'truncated' => false, 'duplicates' => 0,
-            'samples' => ['created' => [], 'updated' => [], 'errors' => [], 'skipped' => []], 'has_report' => false];
+            'samples' => ['created' => [], 'updated' => [], 'errors' => [], 'error_reasons' => [], 'skipped' => []], 'has_report' => false];
 
         $connections = Connections::names($definition);
         $base = Connections::levels($connections);
@@ -149,8 +158,30 @@ final class ImportRunner
         match ($outcome->status) {
             RowOutcome::UPDATED => count($samples['updated']) < 10 && $samples['updated'][] = ['row' => $number, 'label' => $outcome->label, 'changes' => $outcome->changes],
             RowOutcome::CREATED => count($samples['created']) < 5 && $samples['created'][] = ['row' => $number, 'label' => $outcome->label, 'changes' => $outcome->changes],
-            RowOutcome::FAILED => count($samples['errors']) < 20 && $samples['errors'][] = ['row' => $number, 'message' => $outcome->message],
+            RowOutcome::FAILED => self::sampleFailure($samples, $outcome, $number),
             default => $samples['skipped'][$outcome->message] = ($samples['skipped'][$outcome->message] ?? 0) + 1,
         };
+    }
+
+    /**
+     * Keeps the first rows that failed and a tally of WHY they failed: the sample alone shows only the head of the file,
+     * and the dominant reason may sit further down. Messages can embed cell values, so distinct ones are capped; the rest share one bucket.
+     *
+     * @param array<string, mixed> $samples
+     */
+    private static function sampleFailure(array &$samples, RowOutcome $outcome, int $number): void
+    {
+        if (count($samples['errors']) < self::ERROR_SAMPLE) {
+            $samples['errors'][] = ['row' => $number, 'message' => $outcome->message];
+        }
+
+        $reason = $outcome->message;
+        $reasons = &$samples['error_reasons'];
+
+        if (!isset($reasons[$reason]) && count($reasons) >= self::ERROR_REASONS) {
+            $reason = self::OTHER_REASONS;
+        }
+
+        $reasons[$reason] = ($reasons[$reason] ?? 0) + 1;
     }
 }

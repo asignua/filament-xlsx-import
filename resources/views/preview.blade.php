@@ -68,6 +68,24 @@
 
     @if (! empty($preview['samples']['errors']))
         <div class="xi-h">{{ $t('preview_errors') }}</div>
+        @php
+            $reasons = (array) ($preview['samples']['error_reasons'] ?? []);
+            arsort($reasons);
+            $other = \Asignua\FilamentXlsxImport\Support\ImportRunner::OTHER_REASONS;
+            if (isset($reasons[$other])) {
+                $otherCount = $reasons[$other];
+                unset($reasons[$other]);
+                $reasons[$other] = $otherCount;
+            }
+            $shown = count($preview['samples']['errors']);
+        @endphp
+        @if ($reasons !== [])
+            <ul class="xi-note">
+                @foreach ($reasons as $reason => $count)
+                    <li>{{ number_format($count) }} × {{ $reason === $other ? $t('preview_other_reasons') : $reason }}</li>
+                @endforeach
+            </ul>
+        @endif
         <table class="xi-table">
             <thead><tr><th>{{ $t('preview_row') }}</th><th>{{ $t('preview_reason') }}</th></tr></thead>
             <tbody>
@@ -76,6 +94,9 @@
                 @endforeach
             </tbody>
         </table>
+        @if ((int) ($preview['failed'] ?? 0) > $shown)
+            <p class="xi-note">{{ $t('preview_errors_more', ['shown' => number_format($shown), 'total' => number_format((int) $preview['failed'])]) }}</p>
+        @endif
         <p class="xi-note">{{ $t('preview_errors_note') }}</p>
     @endif
 

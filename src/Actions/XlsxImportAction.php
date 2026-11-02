@@ -596,6 +596,9 @@ class XlsxImportAction extends Action
                     ->options(fn (Get $get): array => array_values((array) $get('sheet_names')))
                     ->default(0)
                     ->native(false)
+                    // A real workbook can hold hundreds of sheets: Filament lists only 50 options by default, so lift the limit and allow a search.
+                    ->searchable()
+                    ->optionsLimit(fn (Get $get): int => max(50, count((array) $get('sheet_names'))))
                     ->visible(fn (Get $get): bool => count((array) $get('sheet_names')) > 1),
                 Select::make('csv_encoding')
                     ->label($t('csv_encoding'))

@@ -322,7 +322,7 @@ Merged into **every** row on the server, not mappable by the user, and stronger 
 
 ## Limits and authorization
 
-`->maxFileSize(5_120)` (KB, also an upload-field rule) and `->maxRows(20_000)`, defaults in the config (`max_columns` caps the width, 200 by default). The row limit is enforced while streaming (the scan stops one row past it) and again by the import. A row error never shows SQL, bindings or file paths: a unique violation reads «Duplicate value in email», any other database or unexpected error is generic and goes to the log; throw `RowFailed` from `saveUsing` to fail a row with your own message. The action is an ordinary Filament action:
+`->maxFileSize(5_120)` (KB, also an upload-field rule) and `->maxRows(20_000)`, defaults in the config (`max_columns` caps the width, 200 by default). PHP's `upload_max_filesize` and `post_max_size`, and Livewire's temporary-upload rule (`livewire.temporary_file_upload.rules`, default `max:12288` KB), must be at least as large as `maxFileSize`: otherwise the upload fails with Filament's generic «The file failed to upload» before the plugin's own size message can appear. The row limit is enforced while streaming (the scan stops one row past it) and again by the import. A row error never shows SQL, bindings or file paths: a unique violation reads «Duplicate value in email», any other database or unexpected error is generic and goes to the log; throw `RowFailed` from `saveUsing` to fail a row with your own message. The action is an ordinary Filament action:
 `->authorize(...)`, `->visible(...)`. The run id lives in a hidden form field: it is accepted only for the user, guard, panel and import target that started it.
 
 ## Configuration
