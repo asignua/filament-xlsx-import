@@ -203,6 +203,7 @@ return [
         'bad_pattern' => 'Некоректний регулярний вираз.',
     ],
     'row' => [
+        'belongs_to_another_owner' => ':key належить іншому запису («:owner») — не змінено.',
         'attach_unauthorized' => 'Вам не дозволено приєднувати записи до цього запису.',
         'attached' => 'Приєднано',
         'fixed_unknown' => '«:key» — невідоме цьому імпорту поле (fixedAttributes).',

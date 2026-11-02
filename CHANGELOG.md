@@ -51,3 +51,9 @@ Focused security round:
 - Relation manager (belongsToMany): existing shared records are attached, not rewritten (`->updateAttachedRecords()` opts in); attaching needs the owner policy's `attach` / `attachAny` / `update`.
 - `fixedAttributes()`: plain keys are trusted developer input (documented).
 
+Polish:
+
+- Relation manager: a key that exists under another owner fails with «<key> belongs to another <Owner> — not changed» instead of falling through to create.
+- The «still to map» summary has an opaque panel (light/dark) and is pinned only while required fields are unmapped.
+- The preview shows incoming and stored values through the model's cast (`decimal:2` → «12.50 → 13.00»).
+

@@ -852,7 +852,8 @@ class XlsxImportAction extends Action
                 return $missing === [] ? $t('required_all_mapped') : $t('required_still', ['fields' => implode(', ', $missing)]);
             })
                 ->color(fn (Get $get): string => $this->unmappedRequired($definition, (array) $get('mapping'), $get('update_by')) === [] ? 'success' : 'danger')
-                ->extraAttributes(['class' => 'xi-sticky'])
+                // Pinned only while something is still unmapped; once everything is mapped it is a plain line.
+                ->extraAttributes(fn (Get $get): array => ['class' => 'xi-sticky '.($this->unmappedRequired($definition, (array) $get('mapping'), $get('update_by')) === [] ? 'xi-done' : 'xi-pending')])
                 ->visible($definition->importer !== null || $definition->updateBy !== null || array_filter($definition->targets, static fn (TargetField $f): bool => $f->mappingRequired) !== []),
             Grid::make(['default' => 1, 'md' => 2])->schema([
                 Select::make('update_by')

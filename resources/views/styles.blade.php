@@ -31,8 +31,12 @@
         .xi-casts .fi-fo-repeater-item-content { padding: .6rem 2.4rem .6rem .75rem; }
         .xi-casts .fi-fo-repeater-items { gap: .5rem; }
         /* The sticky element is the grid cell that wraps the text (a child of the tall step container), not the text inside its own short wrapper. */
-        .fi-grid-col:has(> .fi-sc-component > .xi-sticky), .fi-grid-col:has(> .xi-sticky) { position: sticky; top: 0; z-index: 5; }
-        .xi-sticky { padding: .4rem .75rem; border-radius: .5rem; background: color-mix(in oklab, Canvas 94%, currentColor 6%); backdrop-filter: blur(4px); font-weight: 600; }
+        .fi-grid-col:has(> .fi-sc-component > .xi-pending), .fi-grid-col:has(> .xi-pending) { position: sticky; top: 0; z-index: 5; }
+        /* Opaque, so the cards scrolling under it never show through (light and dark). */
+        .xi-sticky { padding: .4rem .75rem; border-radius: .5rem; font-weight: 600; background: #fff; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); }
+        .xi-pending { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08), 0 6px 10px -6px rgba(0, 0, 0, .25); }
+        .dark .xi-sticky { background: #18181b; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+        .dark .xi-pending { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1), 0 6px 10px -6px rgba(0, 0, 0, .6); }
         .xi-hidden { display: none !important; }
         .xi-wrap { overflow-wrap: anywhere; word-break: break-word; }
         .xi-sample { font-family: ui-monospace, monospace; font-size: .8rem; overflow-wrap: anywhere; }

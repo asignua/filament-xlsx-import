@@ -258,6 +258,50 @@ class FocusedRoundTest extends TestCase
 
         $this->assertSame(['fresh'], $product->fresh()->tags->pluck('name')->all());
     }
+
+    // ---- polish
+
+    public function test_a_key_under_another_owner_is_reported_as_such_not_as_a_duplicate(): void
+    {
+        $mine = $this->category('Mine');
+        $other = $this->category('Other Shop');
+        $theirs = $this->product('R-2', $other);
+        ProductsRelationManager::$header = fn (): array => [XlsxImportAction::make()->updateBy('sku')->only(['sku', 'name'])];
+
+        $page = $this->upload($this->categoryManager($mine), Sheet::csv("sku,name\nR-2,Hijack\nR-3,Fresh\n"), action: $this->table());
+        $preview = $this->preview($page->goToWizardStep(3));
+        $page->callMountedAction();
+
+        $this->assertSame(1, $preview['failed']);
+        $this->assertSame(__('filament-xlsx-import::filament-xlsx-import.row.belongs_to_another_owner', ['key' => 'R-2', 'owner' => 'Category']), $preview['samples']['errors'][0]['message']);
+        $this->assertStringNotContainsString('Duplicate', $preview['samples']['errors'][0]['message']);
+        $this->assertSame('Old R-2', $theirs->fresh()->name);
+        $this->assertSame(1, $mine->products()->count(), 'The other row (R-3) was created for this owner.');
+    }
+
+    public function test_the_preview_formats_incoming_and_stored_values_through_the_models_cast(): void
+    {
+        $product = new Product;
+        $product->forceFill(['sku' => 'P-1', 'name' => 'Apple', 'price' => '12.5'])->save();
+
+        $page = $this->upload($this->products(), Sheet::typed([['Артикул', 'Назва', 'Ціна'], ['P-1', 'Apple', 13], ['P-2', 'Pear', 7.5]]))->goToWizardStep(3);
+        $preview = $this->preview($page);
+
+        $this->assertSame(['12.50', '13.00'], $preview['samples']['updated'][0]['changes']['Price'], 'decimal:2 on both sides, not «12.50 → 13».');
+        $this->assertSame([null, '7.50'], $preview['samples']['created'][0]['changes']['Price']);
+    }
+
+    public function test_the_summary_is_pinned_only_while_something_is_unmapped(): void
+    {
+        $html = fn (string $class): string => view('filament-xlsx-import::styles')->render();
+
+        $css = $html('x');
+        $this->assertStringContainsString('.xi-pending', $css);
+        $this->assertStringContainsString('position: sticky', $css);
+        $this->assertDoesNotMatchRegularExpression('/\.xi-done[^{]*\{[^}]*sticky/', $css);
+        $this->assertStringContainsString('background: #fff', $css, 'Opaque in light mode...');
+        $this->assertStringContainsString('.dark .xi-sticky { background: #18181b', $css, '...and in dark mode.');
+    }
 }
 
 final class OwnerPolicyDenyingUpdate

@@ -203,6 +203,7 @@ return [
         'bad_pattern' => 'The regular expression is invalid.',
     ],
     'row' => [
+        'belongs_to_another_owner' => ':key belongs to another :owner — not changed.',
         'attach_unauthorized' => 'You may not attach records to this one.',
         'attached' => 'Attached',
         'fixed_unknown' => '«:key» is not a field this import knows (fixedAttributes).',

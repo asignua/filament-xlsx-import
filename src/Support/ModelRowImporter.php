@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\MorphOneOrMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -51,7 +52,11 @@ final class ModelRowImporter implements RowImporter
         private readonly ?Relation $owner = null,
     ) {
         $this->connections = Connections::names($definition);
+        $this->casts = (new ($definition->model))->getCasts();
     }
+
+    /** @var array<string, mixed> */
+    private array $casts = [];
 
     /** @var list<string> */
     private array $connections;
@@ -75,6 +80,15 @@ final class ModelRowImporter implements RowImporter
                 }
 
                 $existing = $this->scopeToOwner(TenantScope::scope($this->definition->model::query(), new ($this->definition->model)))->where($key, $value)->first();
+
+                // Relation manager: a key that exists, but under another owner, is not ours to create a second time (or to fail on a unique index).
+                if ($existing === null && $this->owner instanceof HasOneOrMany
+                    && TenantScope::scope($this->definition->model::query(), new ($this->definition->model))->where($key, $value)->exists()) {
+                    return RowOutcome::failed(__('filament-xlsx-import::filament-xlsx-import.row.belongs_to_another_owner', [
+                        'key' => is_scalar($value) ? (string) $value : $key,
+                        'owner' => Str::headline(class_basename($this->owner->getParent())),
+                    ]));
+                }
                 $token = $key.'='.(is_scalar($value) ? (string) $value : json_encode($value));
                 $duplicate = isset($this->seen[$token]);
                 $this->seen[$token] = true;
@@ -209,8 +223,8 @@ final class ModelRowImporter implements RowImporter
         foreach ($attributes as $name => $new) {
             $old = $existing->getAttribute($name);
             $target = $this->definition->target($name);
-            $oldText = self::display($old, $target->type ?? 'string');
-            $newText = self::display($new, $target->type ?? 'string');
+            $oldText = $this->show($old, $target);
+            $newText = $this->show($new, $target);
 
             if (!self::same($oldText, $newText)) {
                 $changes[$target->label ?? $name] = [$oldText, $newText];
@@ -258,7 +272,7 @@ final class ModelRowImporter implements RowImporter
 
         foreach ($attributes as $name => $value) {
             $target = $this->definition->target($name);
-            $values[$target->label ?? $name] = [null, self::display($value, $target->type ?? 'string')];
+            $values[$target->label ?? $name] = [null, $this->show($value, $target)];
         }
 
         foreach ($relations as $info) {
@@ -564,6 +578,20 @@ final class ModelRowImporter implements RowImporter
         $value = $key !== null ? ($attributes[$key] ?? null) : (reset($attributes) ?: null);
 
         return is_scalar($value) ? mb_strimwidth((string) $value, 0, 60, '…') : '';
+    }
+
+    /**
+     * How a value reads in the preview: through the model's own cast, so `decimal:2` shows «13.00» for the incoming 13 as well as for the stored «12.50».
+     */
+    private function show(mixed $value, ?TargetField $target): ?string
+    {
+        $cast = $target !== null && !$target->isRelation() ? ($this->casts[$target->key] ?? null) : null;
+
+        if (is_string($cast) && preg_match('/^decimal:(\d+)$/', $cast, $m) === 1 && is_numeric($value)) {
+            return number_format((float) $value, (int) $m[1], '.', '');
+        }
+
+        return self::display($value, $target->type ?? 'string');
     }
 
     private static function display(mixed $value, string $type): ?string

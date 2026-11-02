@@ -303,6 +303,7 @@ class ProductsRelationManager extends RelationManager
 ```
 
 - `hasMany` / `hasOne` / `morphMany`: new records get the owner's key (and morph type) set by the plugin — **the foreign key is never a target** — and existing records are looked up **among the owner's own** (a record of another owner is never touched).
+- A row whose key exists under **another owner** fails with «<key> belongs to another <Owner> — not changed» (checked before creating, so it holds without a unique index too; with one it would otherwise show up as a duplicate).
 - The **inverse `belongsTo`** of the owner relation (`category.name` inside a category's products) is not a target either — only the owner decides which record a row belongs to; the owner's key is also re-applied to every record after the row is filled.
 - `belongsToMany`: found records are **attached** (`syncWithoutDetaching`) and — because they are shared with other owners — **not rewritten**; new ones are created and attached. `->updateAttachedRecords()` opts in to updating the found ones too (each still needs its own policy). Attaching needs what Filament's AttachAction needs: the owner policy's `attach` (else `attachAny`, else `update`) — an owner without a policy is not restricted. A row that is refused is rolled back whole (a tag created for it disappears).
 - The owner travels with a queued import (class, key, relationship name) and the dry run, authorization, tenancy and the failed-rows report work as everywhere else. Other relationship types (`hasManyThrough`…) are not supported.
