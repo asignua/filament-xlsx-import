@@ -73,7 +73,13 @@ final class ReportDownloadController
         try {
             $user = Auth::guard($guard)->user();
 
-            return !$user instanceof FilamentUser || $user->canAccessPanel(Filament::getPanel($panel));
+            if (!$user instanceof FilamentUser) {
+                return true;
+            }
+
+            $target = Filament::getPanel($panel);
+
+            return $target !== null && $user->canAccessPanel($target);
         } catch (Throwable) {
             return false;
         }
@@ -84,7 +90,8 @@ final class ReportDownloadController
         Notification::make()->title(__('filament-xlsx-import::filament-xlsx-import.'.$message))->danger()->send();
 
         try {
-            $fallback = url(($panelId !== null ? Filament::getPanel($panelId) : Filament::getDefaultPanel())->getPath());
+            $target = $panelId !== null ? Filament::getPanel($panelId) : Filament::getDefaultPanel();
+            $fallback = url($target?->getPath() ?? '/');
         } catch (Throwable) {
             $fallback = url('/');
         }
