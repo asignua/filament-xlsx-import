@@ -5,6 +5,7 @@ All notable changes to `asignua/filament-xlsx-import` are documented here.
 ## v1.1.0 - 2026-11-10
 
 - Requires Filament ^5.11.2; replaced deprecated Filament API calls: Requires Filament ^5.11.2; replaced deprecated Filament API calls (ImportColumn::getExample() → getExamples(), ::guess() → guesses() in the workbench).
+- Laravel 13 deprecations: the workbench panel uses `PreventRequestForgery` (with a `VerifyCsrfToken` fallback for Laravel 12); `UrlGenerator::forceRootUrl()` -> `useOrigin()` (Laravel 12 fallback kept). Laravel 12 is still supported.
 
 ## v1.0.1 - 2026-11-02
 

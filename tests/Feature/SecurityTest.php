@@ -613,7 +613,9 @@ E-1,new@example.com
     public function test_signing_a_link_puts_back_the_workers_own_url_root(): void
     {
         $id = RunStore::create(['user' => 1]);
-        URL::forceRootUrl('https://worker.example');
+        // Laravel 13 renamed forceRootUrl() to useOrigin(); Laravel 12 has only the old name.
+        $generator = app('url');
+        method_exists($generator, 'useOrigin') ? $generator->useOrigin('https://worker.example') : $generator->{'forceRootUrl'}('https://worker.example');
         URL::forceScheme('https');
 
         $link = RunStore::url($id, 'http://panel.test');

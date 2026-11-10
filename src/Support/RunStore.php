@@ -130,7 +130,7 @@ final class RunStore
         [$previousRoot, $previousScheme] = (fn (): array => [$this->forcedRoot, $this->forceScheme])->call($generator);
 
         if ($root !== null && $root !== '') {
-            $generator->forceRootUrl($root);
+            self::useOrigin($root);
             $generator->forceScheme(parse_url($root, PHP_URL_SCHEME) ?: null);
         }
 
@@ -138,10 +138,23 @@ final class RunStore
             return URL::temporarySignedRoute(self::ROUTE, now()->addHours(self::linkHours()), ['id' => $id]);
         } finally {
             if ($root !== null && $root !== '') {
-                $generator->forceRootUrl($previousRoot);
+                self::useOrigin($previousRoot);
                 $generator->forceScheme(is_string($previousScheme) ? rtrim($previousScheme, ':/') : null);
             }
         }
+    }
+
+    /**
+     * Laravel 13 renamed forceRootUrl() to useOrigin() and deprecated the old name.
+     */
+    private static function useOrigin(?string $root): void
+    {
+        /** @var object $url */
+        $url = app('url');
+
+        // Laravel 12: useOrigin() does not exist yet. Dynamic names: static analysis only sees one of the two versions.
+        $method = method_exists($url, 'useOrigin') ? 'useOrigin' : 'forceRootUrl';
+        $url->{$method}($root); // @phpstan-ignore method.notFound
     }
 
     /**
