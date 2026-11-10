@@ -24,7 +24,7 @@ class ContactImporter extends Importer
     {
         return [
             ImportColumn::make('name')->requiredMapping()->rules(['required', 'max:255'])->example('Ada Lovelace'),
-            ImportColumn::make('email')->requiredMapping()->rules(['required', 'email'])->guess(['e-mail', 'mail'])->example('ada@example.com'),
+            ImportColumn::make('email')->requiredMapping()->rules(['required', 'email'])->guesses(['e-mail', 'mail'])->example('ada@example.com'),
             ImportColumn::make('phone')->rules(['nullable', 'max:30']),
             ImportColumn::make('city')->rules(['nullable', 'in:Lviv,Kyiv,Odesa']),
         ];

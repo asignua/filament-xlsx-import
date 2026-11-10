@@ -10,6 +10,7 @@ use Asignua\FilamentXlsxImport\Data\TargetField;
 use Filament\Actions\Imports\ImportColumn;
 use Filament\Actions\Imports\Importer;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rules\Enum;
 use Illuminate\Validation\Rules\In;
@@ -170,7 +171,7 @@ final class DefinitionResolver
 
     private static function example(ImportColumn $column): string
     {
-        $example = $column->getExample();
+        $example = Arr::first($column->getExamples());
 
         return is_scalar($example) ? (string) $example : '';
     }

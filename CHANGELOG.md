@@ -2,6 +2,10 @@
 
 All notable changes to `asignua/filament-xlsx-import` are documented here.
 
+## v1.1.0 - 2026-11-10
+
+- Requires Filament ^5.11.2; replaced deprecated Filament API calls: Requires Filament ^5.11.2; replaced deprecated Filament API calls (ImportColumn::getExample() → getExamples(), ::guess() → guesses() in the workbench).
+
 ## v1.0.1 - 2026-11-02
 
 - Formula cells import the result the spreadsheet app cached next to the formula, not the formula text (`=+380501112233`, `=COUNTIF(…)`); a formula with no cached result is an empty cell. Duration cells (`[h]:mm:ss`) read as `36:30:00` instead of blank.
