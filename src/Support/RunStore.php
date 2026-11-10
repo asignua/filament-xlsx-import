@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Asignua\FilamentXlsxImport\Support;
 
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Routing\UrlGenerator;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
@@ -149,12 +150,11 @@ final class RunStore
      */
     private static function useOrigin(?string $root): void
     {
-        /** @var object $url */
-        $url = app('url');
+        $url = app(UrlGenerator::class);
 
         // Laravel 12: useOrigin() does not exist yet. Dynamic names: static analysis only sees one of the two versions.
-        $method = method_exists($url, 'useOrigin') ? 'useOrigin' : 'forceRootUrl';
-        $url->{$method}($root); // @phpstan-ignore method.notFound
+        $method = version_compare(app()->version(), '13.0.0', '>=') ? 'useOrigin' : 'forceRootUrl';
+        $url->{$method}($root);
     }
 
     /**
