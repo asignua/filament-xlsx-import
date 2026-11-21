@@ -2,6 +2,10 @@
 
 All notable changes to `asignua/filament-xlsx-import` are documented here.
 
+## v1.1.1 - 2026-11-21
+
+- Catalogue cover (`art/cover.jpg`): the screenshot is cropped to the whole import modal (all four stat cards, tables to the right edge, no grey strip). No code changes.
+
 ## v1.1.0 - 2026-11-10
 
 - Requires Filament ^5.11.2; replaced deprecated Filament API calls: Requires Filament ^5.11.2; replaced deprecated Filament API calls (ImportColumn::getExample() → getExamples(), ::guess() → guesses() in the workbench).
