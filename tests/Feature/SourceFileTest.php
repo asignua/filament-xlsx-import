@@ -56,8 +56,8 @@ class SourceFileTest extends TestCase
         $this->assertInstanceOf(\DateTimeInterface::class, $rows[1][3]);
         $this->assertSame('2026-01-31', $rows[1][3]->format('Y-m-d'));
         $this->assertSame('36:00:00', SourceFile::stringify($rows[1][4]));
-        // OpenSpout reads a numeric formula with no cached <v> as 0 (it cannot be told from a cached 0); a text one as empty.
-        $this->assertSame(0, $rows[2][1]);
+        // OpenSpout reads a numeric formula with no cached <v> as 0 (int up to 4.32, float 0.0 from 4.33; it cannot be told from a cached 0); a text one as empty.
+        $this->assertEquals(0, $rows[2][1]);
         $this->assertSame('', $rows[2][2]);
         $this->assertTrue($rows[2][3]);
         $this->assertSame('36:30:00', SourceFile::stringify($rows[2][4]));
@@ -72,11 +72,12 @@ class SourceFileTest extends TestCase
 
         $table = iterator_to_array($file->table(), false);
         $this->assertSame(380501112233, $table[0]['Phone']);
-        $this->assertSame(0, $table[1]['Phone']);
+        $this->assertEquals(0, $table[1]['Phone']);
 
         $scan = $file->scan();
         $this->assertSame(['Name', 'Phone', 'Note', 'Day', 'Hours'], $scan['headers']);
-        $this->assertSame([380501112233, 0], $scan['samples']['Phone']);
+        $this->assertSame(380501112233, $scan['samples']['Phone'][0]);
+        $this->assertEquals(0, $scan['samples']['Phone'][1]);
         $this->assertSame(['380501112233', '0'], $scan['distinct']['Phone']);
     }
 
