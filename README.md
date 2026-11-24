@@ -3,7 +3,9 @@
 [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://stand-with-ukraine.pp.ua)
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/asignua/filament-xlsx-import.svg?style=flat-square)](https://packagist.org/packages/asignua/filament-xlsx-import)
 [![Tests](https://img.shields.io/github/actions/workflow/status/asignua/filament-xlsx-import/tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/asignua/filament-xlsx-import/actions/workflows/tests.yml)
+[![Total Downloads](https://img.shields.io/packagist/dt/asignua/filament-xlsx-import.svg?style=flat-square)](https://packagist.org/packages/asignua/filament-xlsx-import)
 [![License](https://img.shields.io/packagist/l/asignua/filament-xlsx-import.svg?style=flat-square)](https://github.com/asignua/filament-xlsx-import/blob/main/LICENSE.md)
+[![Plumb score](https://plumbphp.dev/badges/asignua/filament-xlsx-import/composite.svg)](https://plumbphp.dev/asignua/filament-xlsx-import)
 
 <img class="filament-hidden" src="https://raw.githubusercontent.com/asignua/filament-xlsx-import/v1.0.0/art/cover.jpg" alt="Filament XLSX Import">
 
@@ -400,6 +402,10 @@ composer analyse
 vendor/bin/pint --test
 ```
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
+
 ## More plugins by asign
 
 - [XLSX Export](https://filamentphp.com/plugins/asign-xlsx-export) — typed `.xlsx` downloads of what is on the screen
@@ -409,6 +415,8 @@ vendor/bin/pint --test
 - [Redirects](https://filamentphp.com/plugins/asign-redirects) — redirects and the 404 log
 
 All plugins: <https://filamentphp.com/plugins?q=asign>
+
+Catalogue of free and commercial plugins: <https://asign.tech/en/plugins>
 
 ## License
 
